@@ -137,50 +137,13 @@
         .profile-btn img { width: 100%; height: 100%; object-fit: cover; }
 
         /* ===== SEARCH SCREEN STYLES ===== */
-        .search-header {
-            padding: 20px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            border-bottom: 1px solid var(--border);
-        }
-        .search-back-btn {
-            width: 40px;
-            height: 40px;
-            background: rgba(255,255,255,0.05);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            cursor: pointer;
-            flex-shrink: 0;
-        }
-        .search-back-btn:active { background: rgba(0, 191, 255, 0.2); }
-        .search-input-wrapper {
-            flex: 1;
-            position: relative;
-        }
-        .search-page-input {
-            width: 100%;
-            padding: 14px 18px;
-            background: var(--glass);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            color: white;
-            font-size: 15px;
-            outline: none;
-        }
-        .search-page-input:focus { border-color: var(--sky-blue); }
-        .search-clear-btn {
-            position: absolute;
-            right: 12px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #666;
-            cursor: pointer;
-            font-size: 18px;
-            display: none;
-        }
+        .search-header{padding:20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)}
+        .search-back-btn{width:40px;height:40px;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;border-radius:50%;cursor:pointer;flex-shrink:0}
+        .search-back-btn:active{background:rgba(0,191,255,0.2)}
+        .search-input-wrapper{flex:1;position:relative}
+        .search-page-input{width:100%;padding:14px 18px;background:var(--glass);border:1px solid var(--border);border-radius:16px;color:white;font-size:15px;outline:none}
+        .search-page-input:focus{border-color:var(--sky-blue)}
+        .search-clear-btn{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#666;cursor:pointer;font-size:18px;display:none}
         .search-content {
             flex: 1;
             overflow-y: auto;
@@ -350,26 +313,10 @@
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .loading-text {
-            color: var(--sky-blue);
-            margin-top: 15px;
-            font-size: 12px;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-        }
-        .yt-loading {
-            text-align: center;
-            padding: 20px;
-            color: var(--primary);
-            font-size: 12px;
-        }
-
-        @media (max-width: 400px) {
-            .auth-card h1 { font-size: 36px; }
-            .p-avatar { width: 120px; height: 120px; }
-            .playlist-grid { gap: 10px; }
-        }
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .loading-text{color:var(--sky-blue);margin-top:15px;font-size:12px;letter-spacing:2px;text-transform:uppercase}
+        .yt-loading{text-align:center;padding:20px;color:var(--primary);font-size:12px}
+        @media(max-width:400px){.auth-card h1{font-size:36px}.p-avatar{width:120px;height:120px}.playlist-grid{gap:10px}}
     </style>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
@@ -647,6 +594,68 @@
         let ytTimeInterval = null;
         let ytPlayerReady = false;
 
+        // ===== MEDIA SESSION API - Background Playback =====
+        function setupMediaSession() {
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.setActionHandler('play', function() {
+                    togglePlay();
+                });
+                navigator.mediaSession.setActionHandler('pause', function() {
+                    togglePlay();
+                });
+                navigator.mediaSession.setActionHandler('previoustrack', function() {
+                    prevTrack();
+                });
+                navigator.mediaSession.setActionHandler('nexttrack', function() {
+                    nextTrack();
+                });
+                navigator.mediaSession.setActionHandler('seekbackward', function(details) {
+                    if (isYouTubePlaying && youtubePlayer && ytPlayerReady) {
+                        const skipTime = details.seekOffset || 10;
+                        youtubePlayer.seekTo(Math.max(0, ytCurrentTime - skipTime), true);
+                    } else if (audio.currentTime) {
+                        audio.currentTime = Math.max(0, audio.currentTime - (details.seekOffset || 10));
+                    }
+                });
+                navigator.mediaSession.setActionHandler('seekforward', function(details) {
+                    if (isYouTubePlaying && youtubePlayer && ytPlayerReady) {
+                        const skipTime = details.seekOffset || 10;
+                        youtubePlayer.seekTo(Math.min(ytDuration, ytCurrentTime + skipTime), true);
+                    } else if (audio.currentTime) {
+                        audio.currentTime = Math.min(audio.duration, audio.currentTime + (details.seekOffset || 10));
+                    }
+                });
+            }
+        }
+
+        function updateMediaSessionMetadata(title, artist, image) {
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: title || 'Adify Music',
+                    artist: artist || 'Unknown',
+                    album: 'Adify',
+                    artwork: [
+                        { src: image || 'https://files.catbox.moe/0j9stc.jpeg', sizes: '512x512', type: 'image/jpeg' }
+                    ]
+                });
+                navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+            }
+        }
+
+        // ===== PAGE VISIBILITY - Keep Playing in Background =====
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                // Page is hidden (background) - keep playing
+                console.log('[Adify] App in background, continuing playback');
+                if (!isPlaying && audio.src) {
+                    // Optional: auto-resume if paused
+                }
+            } else {
+                // Page visible again
+                console.log('[Adify] App in foreground');
+            }
+        });
+
         // ===== RECENT SEARCHES =====
         function getRecentSearchesKey() {
             return 'adify_recent_searches_' + (currentUser ? currentUser.email.replace(/\./g, '_') : 'default');
@@ -663,10 +672,8 @@
             if (!query || query.trim().length < 2) return;
             const searches = getRecentSearches();
             const cleanQuery = query.trim();
-            // Remove if exists (move to top)
             const filtered = searches.filter(s => s.toLowerCase() !== cleanQuery.toLowerCase());
             filtered.unshift(cleanQuery);
-            // Keep max 10
             const limited = filtered.slice(0, 10);
             try {
                 localStorage.setItem(getRecentSearchesKey(), JSON.stringify(limited));
@@ -691,25 +698,14 @@
 
         function renderRecentSearches() {
             const list = document.getElementById('recentSearchesList');
-            const section = document.getElementById('recentSearchesSection');
             const searches = getRecentSearches();
-
             if (searches.length === 0) {
                 list.innerHTML = '<div class="no-recent">No recent searches</div>';
                 return;
             }
-
             let html = '';
             searches.forEach(q => {
-                html += `
-                    <div class="recent-search-item" onclick="searchFromRecent('` + q.replace(/'/g, "\'") + `')">
-                        <div class="recent-search-left">
-                            <i class="fas fa-clock recent-search-icon"></i>
-                            <span class="recent-search-text">` + q + `</span>
-                        </div>
-                        <i class="fas fa-times recent-search-delete" onclick="event.stopPropagation(); removeRecentSearch('` + q.replace(/'/g, "\'") + `')"></i>
-                    </div>
-                `;
+                html += '<div class="recent-search-item" onclick="searchFromRecent(' + "'" + q.replace(/'/g, "\'") + "')" + '"><div class="recent-search-left"><i class="fas fa-clock recent-search-icon"></i><span class="recent-search-text">' + q + '</span></div><i class="fas fa-times recent-search-delete" onclick="event.stopPropagation(); removeRecentSearch(' + "'" + q.replace(/'/g, "\'") + "')" + '"></i></div>';
             });
             list.innerHTML = html;
         }
@@ -731,17 +727,12 @@
         }
 
         function closeSearch() {
-            // Stop any ongoing search
             if (searchTimeout) clearTimeout(searchTimeout);
-
-            // Clear search input and results
             document.getElementById('searchPageInput').value = '';
             document.getElementById('searchClearBtn').style.display = 'none';
             document.getElementById('recentSearchesSection').style.display = 'block';
             document.getElementById('searchResultsSection').style.display = 'none';
             document.getElementById('ytSearchResultsSection').style.display = 'none';
-
-            // Go back to home without reload
             showScreen('homeScreen');
             renderAll();
         }
@@ -758,7 +749,6 @@
         function handleSearchPageInput() {
             const query = document.getElementById('searchPageInput').value.trim();
             const clearBtn = document.getElementById('searchClearBtn');
-
             if (query.length > 0) {
                 clearBtn.style.display = 'block';
             } else {
@@ -768,8 +758,6 @@
                 document.getElementById('ytSearchResultsSection').style.display = 'none';
                 return;
             }
-
-            // Live search after 800ms
             if (searchTimeout) clearTimeout(searchTimeout);
             searchTimeout = setTimeout(() => {
                 executeSearch();
@@ -779,15 +767,10 @@
         async function executeSearch() {
             const query = document.getElementById('searchPageInput').value.trim();
             if (!query || query.length < 2) return;
-
-            // Save to recent
             saveRecentSearch(query);
-
-            // Show results section, hide recent
             document.getElementById('recentSearchesSection').style.display = 'none';
             document.getElementById('searchResultsSection').style.display = 'block';
 
-            // Search local tracks
             const merged = [...allSongs];
             if (youtubeSongs && Array.isArray(youtubeSongs)) {
                 youtubeSongs.forEach(yt => {
@@ -808,7 +791,6 @@
                 tracksDiv.innerHTML = '<div class="no-recent">No tracks found</div>';
             }
 
-            // Search YouTube
             const ytSection = document.getElementById('ytSearchResultsSection');
             const ytDiv = document.getElementById('searchResultsYouTube');
             ytSection.style.display = 'block';
@@ -832,7 +814,6 @@
                     image: item.snippet.thumbnails.medium ? item.snippet.thumbnails.medium.url : item.snippet.thumbnails.default.url
                 }));
 
-                // Save to youtubeSongs permanently
                 youtubeResults.forEach(yt => {
                     const exists = youtubeSongs.some(s => s.videoId === yt.videoId);
                     if (!exists) {
@@ -860,7 +841,7 @@
             }
         }
 
-        // ===== PLAYLIST PERSISTENCE FUNCTIONS =====
+        // ===== PLAYLIST PERSISTENCE =====
         function getPlaylistStorageKey() {
             if (currentUser && currentUser.email) {
                 return 'adify_playlists_' + currentUser.email.replace(/\./g, '_');
@@ -872,7 +853,6 @@
             const key = getPlaylistStorageKey();
             try {
                 localStorage.setItem(key, JSON.stringify(userPlaylists));
-                console.log("[Adify] Playlists saved for", currentUser ? currentUser.email : 'default');
             } catch(e) {
                 console.error("[Adify] Failed to save playlists:", e);
             }
@@ -889,7 +869,6 @@
                             userPlaylists[pName] = parsed[pName];
                         }
                     });
-                    console.log("[Adify] Playlists loaded:", Object.keys(userPlaylists).map(k => k + "=" + userPlaylists[k].length).join(", "));
                 }
             } catch(e) {
                 console.error("[Adify] Failed to load playlists:", e);
@@ -898,20 +877,7 @@
 
         function ytSongItemTemplate(s) {
             const isP = currentYouTubeId === s.videoId;
-            return `
-                <div class="song-item ${isP ? 'playing-active' : ''}" onclick="playYouTubeSong('` + s.videoId + `', '` + s.title.replace(/'/g, "\'") + `', '` + s.artist.replace(/'/g, "\'") + `', '` + s.image + `')">
-                    <div style="display:flex; align-items:center; flex:1">
-                        <div class="img-container">
-                            <img src="` + s.image + `" class="song-img">
-                        </div>
-                        <div style="overflow:hidden; flex:1">
-                            <h4>` + s.title + `</h4>
-                            <p style="font-size:10px; opacity:0.5">` + s.artist + `</p>
-                        </div>
-                    </div>
-                    <div class="more-btn" onclick="event.stopPropagation(); openYtMenu(event, '` + s.videoId + `')">⋮</div>
-                </div>
-            `;
+            return '<div class="song-item ' + (isP ? 'playing-active' : '') + '" onclick="playYouTubeSong(' + "'" + s.videoId + "', '" + s.title.replace(/'/g, "\'") + "', '" + s.artist.replace(/'/g, "\'") + "', '" + s.image + "')" + '"><div style="display:flex; align-items:center; flex:1"><div class="img-container"><img src="' + s.image + '" class="song-img"></div><div style="overflow:hidden; flex:1"><h4>' + s.title + '</h4><p style="font-size:10px; opacity:0.5">' + s.artist + '</p></div></div><div class="more-btn" onclick="event.stopPropagation(); openYtMenu(event, ' + "'" + s.videoId + "')" + '">⋮</div></div>';
         }
 
         function openYtMenu(e, videoId) {
@@ -948,7 +914,6 @@
 
         function playYouTubeSong(videoId, title, channel, thumbUrl) {
             stopLocalAudio();
-
             currentYouTubeId = videoId;
             isYouTubePlaying = true;
             currentUrl = 'youtube://' + videoId;
@@ -968,9 +933,11 @@
             document.getElementById('seekSlider').value = 0;
 
             loadYouTubePlayer(videoId);
-
             isAutoPlayMode = true;
             startYoutubeAutoPlay(videoId);
+
+            // Update Media Session for background playback
+            updateMediaSessionMetadata(title, channel, thumbUrl);
 
             showPopup("▶ PLAYING", "success");
             refreshView();
@@ -979,7 +946,6 @@
         function loadYouTubePlayer(videoId) {
             const wrapper = document.getElementById('yt-player-wrapper');
             wrapper.innerHTML = '';
-
             if (!window.YT || !YT.Player) {
                 const tag = document.createElement('script');
                 tag.src = "https://www.youtube.com/iframe_api";
@@ -1002,7 +968,6 @@
         function createYouTubePlayer(videoId) {
             const wrapper = document.getElementById('yt-player-wrapper');
             wrapper.innerHTML = '<div id="youtube-player"></div>';
-
             try {
                 youtubePlayer = new YT.Player('youtube-player', {
                     height: '1',
@@ -1066,7 +1031,6 @@
                 try {
                     ytCurrentTime = youtubePlayer.getCurrentTime();
                     ytDuration = youtubePlayer.getDuration();
-
                     if (ytDuration > 0) {
                         const pct = (ytCurrentTime / ytDuration) * 100;
                         document.getElementById('fill').style.width = pct + '%';
@@ -1146,6 +1110,11 @@
             document.getElementById('totalDuration').innerText = "0:00";
             document.getElementById('fill').style.width = '0%';
             document.getElementById('seekSlider').value = 0;
+            // Clear media session
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.metadata = null;
+                navigator.mediaSession.playbackState = 'none';
+            }
         }
 
         function updatePlayIcon(playing) {
@@ -1157,7 +1126,7 @@
             }
         }
 
-        // ===== SESSION BACKUP FUNCTIONS =====
+        // ===== SESSION BACKUP =====
         function saveSession(userData) {
             const data = JSON.stringify(userData);
             localStorage.setItem('adify_current_session', data);
@@ -1259,7 +1228,6 @@
         const audio = document.getElementById("mainAudio");
         let currentUrl = "", searchQuery = "", activeP = null, isDragging = false, isSelectionMode = false, currentTrackData = null, selectedSongs = new Set(), youtubeSongs = [];
 
-        // Default empty playlists - will be populated from localStorage on login
         const userPlaylists = { "Lo-Fi Sleep 😴": [], "Study Focus 📖": [], "Traveling ✈️": [], "My Playlist 💖": [] };
 
         const allSongs = [
@@ -1356,7 +1324,7 @@
             document.getElementById('switch-text').innerHTML = isReg ? 'Already a member? <span onclick="toggleAuth(false)">Log In</span>' : 'New here? <span onclick="toggleAuth(true)">Create Account</span>';
         }
 
-        // ===== CROSS-DEVICE LOGIN HELPERS =====
+        // ===== CROSS-DEVICE LOGIN =====
         function findUserLocal(lid) {
             let savedData = localStorage.getItem(lid);
             if (savedData) {
@@ -1382,11 +1350,9 @@
         function tryFirebaseLogin(lid, lpass) {
             return new Promise((resolve) => {
                 if (!db) { 
-                    console.error("[Adify] Firebase DB not initialized!"); 
                     resolve({ error: "FIREBASE NOT CONNECTED" }); 
                     return; 
                 }
-
                 const checkUser = (user) => {
                     if (!user) return resolve(null);
                     if (user.password === lpass) {
@@ -1397,38 +1363,24 @@
                         resolve({ error: "WRONG PASSWORD" });
                     }
                 };
-
                 if (lid.includes('@')) {
                     const safeKey = lid.replace(/\./g, '_');
-                    console.log("[Adify] Firebase lookup by email:", safeKey);
                     db.ref('users/' + safeKey).once('value')
-                        .then(snap => {
-                            console.log("[Adify] Firebase snapshot exists:", snap.exists());
-                            checkUser(snap.val());
-                        })
-                        .catch(err => {
-                            console.error("[Adify] Firebase email lookup error:", err.message);
-                            resolve({ error: "FIREBASE ERROR: " + err.message });
-                        });
+                        .then(snap => { checkUser(snap.val()); })
+                        .catch(err => { resolve({ error: "FIREBASE ERROR: " + err.message }); });
                 } else {
-                    console.log("[Adify] Firebase scan by phone:", lid);
                     db.ref('users').once('value')
                         .then(snap => {
                             const users = snap.val();
-                            console.log("[Adify] Total users in DB:", users ? Object.keys(users).length : 0);
                             if (!users) return resolve(null);
                             for (let key in users) {
                                 if (users[key] && users[key].phone === lid) {
-                                    console.log("[Adify] Found user by phone:", key);
                                     return checkUser(users[key]);
                                 }
                             }
                             resolve(null);
                         })
-                        .catch(err => {
-                            console.error("[Adify] Firebase phone scan error:", err.message);
-                            resolve({ error: "FIREBASE ERROR: " + err.message });
-                        });
+                        .catch(err => { resolve({ error: "FIREBASE ERROR: " + err.message }); });
                 }
             });
         }
@@ -1455,7 +1407,6 @@
             if (!isRegisterMode) {
                 const lid = document.getElementById('login-id').value.toLowerCase().trim();
                 const lpass = document.getElementById('login-pass').value;
-
                 if (lid === "1" && lpass === "1") {
                     showPopup("MASTER LOGIN SUCCESS", "success");
                     currentUser = { name: 'Master', email: 'master@adify.com', phone: '0000000000', gender: 'Male', age: 21 };
@@ -1464,7 +1415,6 @@
                     setTimeout(() => { openHome(); }, 1000); 
                     return;
                 }
-
                 const localUser = findUserLocal(lid);
                 if (localUser) {
                     if (localUser.password === lpass) {
@@ -1474,23 +1424,19 @@
                     }
                     return;
                 }
-
                 showPopup("VERIFYING USER...", "success");
                 const result = await tryFirebaseLogin(lid, lpass);
-
                 if (result === null) {
                     showPopup("USER NOT FOUND", "error");
                 } else if (result.error) {
                     if (result.error.includes("FIREBASE")) {
                         showPopup("SERVER ERROR - CHECK CONSOLE", "error");
-                        console.error("[Adify] Cross-device login failed:", result.error);
                     } else {
                         showPopup(result.error, "error");
                     }
                 } else {
                     finalizeLogin(result);
                 }
-
             } else {
                 const name = document.getElementById('full-name').value;
                 const emailInput = document.getElementById('reg-email').value;
@@ -1498,29 +1444,23 @@
                 const phone = document.getElementById('reg-phone').value;
                 const pass = document.getElementById('reg-pass').value;
                 const age = document.getElementById('reg-age').value;
-
                 if (localStorage.getItem(email)) { showPopup("EMAIL ALREADY REGISTERED", "error"); return; }
-
                 let phoneCountKey = "count_" + phone;
                 let currentCount = parseInt(localStorage.getItem(phoneCountKey)) || 0;
                 if (currentCount >= 3) { showPopup("MAX 3 ACCOUNTS PER NUMBER", "error"); return; }
-
                 if (name && emailRegex.test(emailInput) && phone.length === 10 && pass.length >= 8 && age >= 18) {
                     const userData = { name: name, email: email, phone: phone, password: pass, gender: selectedGender, age: age, photo: null };
                     localStorage.setItem(email, JSON.stringify(userData));
                     localStorage.setItem(phone, JSON.stringify(userData));
                     localStorage.setItem(phoneCountKey, currentCount + 1);
                     saveSession(userData);
-
                     showPopup("SYNCING TO CLOUD...", "success");
                     try {
                         await saveUserToCloud(userData);
                         showPopup("REGISTERED SUCCESSFULLY", "success");
                     } catch(e) {
-                        console.error("[Adify] Cloud save failed:", e);
                         showPopup("REGISTERED - CLOUD SYNC FAILED", "error");
                     }
-
                     setTimeout(() => {
                         toggleAuth(false);
                         showPopup("PLEASE LOG IN WITH YOUR DETAILS", "success");
@@ -1573,7 +1513,6 @@
         function renderAll() {
             try {
                 document.getElementById('mainPlaylistGrid').innerHTML = playlistsData.filter(p => p.name.toLowerCase().includes(searchQuery)).map(p => '<div class="card" onclick="openPlaylist(' + "'" + p.name + "')" + '"><div class="art" style="background: url(' + "'" + p.img + "');" + '"></div><p style="font-size:10px;">' + p.name + '</p></div>').join('');
-
                 const merged = [...allSongs];
                 if (youtubeSongs && Array.isArray(youtubeSongs)) {
                     youtubeSongs.forEach(yt => {
@@ -1581,7 +1520,6 @@
                         if (!dup) merged.push(yt);
                     });
                 }
-
                 const container = document.getElementById('singleTracksContainer');
                 if (container) {
                     container.innerHTML = merged.filter(s => s.title.toLowerCase().includes(searchQuery)).map(s => songItemTemplate(s)).join('');
@@ -1595,17 +1533,13 @@
             if (isYouTubePlaying) {
                 stopYouTubePlayer();
             }
-
             isAutoPlayMode = false;
-
             currentTrackData = { title: t, artist: a, url: u, image: i };
             currentUrl = u;
             isPlaying = true;
-
             audio.pause();
             audio.src = u;
             audio.load();
-
             const playPromise = audio.play();
             if (playPromise !== undefined) {
                 playPromise.then(() => {
@@ -1616,8 +1550,9 @@
                     art.style.backgroundSize = 'cover';
                     art.classList.add('music-playing');
                     updatePlayIcon(true);
+                    // Setup media session for background playback
+                    updateMediaSessionMetadata(t, a, i);
                 }).catch(err => {
-                    console.error("[Adify] Audio play error:", err);
                     document.getElementById('pTitle').innerText = t;
                     document.getElementById('pArtist').innerText = a;
                     const art = document.getElementById('playerImgArt');
@@ -1634,8 +1569,8 @@
                 art.style.backgroundSize = 'cover';
                 art.classList.add('music-playing');
                 updatePlayIcon(true);
+                updateMediaSessionMetadata(t, a, i);
             }
-
             refreshView();
         }
 
@@ -1656,14 +1591,16 @@
                 } catch(e) {
                     console.error("[Adify] YouTube toggle error:", e);
                 }
+                // Update media session state
+                if ('mediaSession' in navigator) {
+                    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+                }
                 return;
             }
-
             if (!audio.src || audio.src === window.location.href) {
                 nextTrack();
                 return;
             }
-
             if (audio.paused) {
                 const playPromise = audio.play();
                 if (playPromise !== undefined) {
@@ -1671,8 +1608,10 @@
                         isPlaying = true;
                         updatePlayIcon(true);
                         document.getElementById('playerImgArt').classList.add('music-playing');
+                        if ('mediaSession' in navigator) {
+                            navigator.mediaSession.playbackState = 'playing';
+                        }
                     }).catch(err => {
-                        console.error("[Adify] Audio play error:", err);
                         isPlaying = false;
                         updatePlayIcon(false);
                     });
@@ -1682,6 +1621,9 @@
                 isPlaying = false;
                 updatePlayIcon(false);
                 document.getElementById('playerImgArt').classList.remove('music-playing');
+                if ('mediaSession' in navigator) {
+                    navigator.mediaSession.playbackState = 'paused';
+                }
             }
         }
 
@@ -1689,7 +1631,6 @@
             const s = document.getElementById('seekSlider');
             const pct = (s.value / s.max) * 100;
             document.getElementById('fill').style.width = pct + '%';
-
             if (!isYouTubePlaying && audio.duration && isFinite(audio.duration)) {
                 isDragging = true;
                 const time = audio.duration * (s.value / 1000);
@@ -1703,7 +1644,6 @@
 
         function handleSeekChange() {
             const s = document.getElementById('seekSlider');
-
             if (isYouTubePlaying && youtubePlayer && ytPlayerReady && ytDuration > 0) {
                 const seekTime = ytDuration * (s.value / 1000);
                 try {
@@ -1732,6 +1672,9 @@
             isPlaying = false;
             updatePlayIcon(false);
             document.getElementById('playerImgArt').classList.remove('music-playing');
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.playbackState = 'none';
+            }
             nextTrack(); 
         };
 
@@ -1841,15 +1784,12 @@
                 currentUser.age = newAge;
                 currentUser.gender = selectedGenderProfile;
                 if (currentPhoto) currentUser.photo = currentPhoto;
-
                 localStorage.setItem(currentUser.email, JSON.stringify(currentUser));
                 if (currentUser.phone) localStorage.setItem(currentUser.phone, JSON.stringify(currentUser));
                 saveSession(currentUser);
-
                 updateProfileInCloud(currentUser.email, {
                     name: newName, age: newAge, gender: selectedGenderProfile, photo: currentUser.photo
                 });
-
                 document.getElementById('display-name').innerText = newName;
                 document.getElementById('p-gender').innerText = selectedGenderProfile;
                 document.getElementById('p-age').innerText = newAge + " Years";
@@ -1888,42 +1828,35 @@
             } catch(e) { youtubeSongs = []; }
         }
 
-        // ===== BACK BUTTON HANDLER - FIXED: NO PAGE RELOAD =====
+        // ===== BACK BUTTON HANDLER - NO PAGE RELOAD =====
         let isHandlingBack = false;
         let backPressCount = 0;
         let backPressTimer = null;
 
         function handleBackButton(e) {
-            // Prevent double-fire from popstate + backbutton
             if (isHandlingBack) return;
             isHandlingBack = true;
             setTimeout(() => { isHandlingBack = false; }, 300);
-
-            // Prevent default browser back behavior
             if (e && e.preventDefault) e.preventDefault();
 
-            // 1. Search open? -> Close search and go to home
             const searchScreen = document.getElementById('searchScreen');
             if (searchScreen && searchScreen.classList.contains('active')) {
                 closeSearch();
                 return;
             }
 
-            // 2. Profile open? -> Go to home
             const profileScreen = document.getElementById('profileScreen');
             if (profileScreen && profileScreen.classList.contains('active')) {
                 closeProfile();
                 return;
             }
 
-            // 3. Playlist open? -> Go to home
             const playlistView = document.getElementById('playlistView');
             if (playlistView && playlistView.classList.contains('active')) {
                 resetToHome();
                 return;
             }
 
-            // 4. Home active? -> Double press to exit
             const homeScreen = document.getElementById('homeScreen');
             if (homeScreen && homeScreen.classList.contains('active')) {
                 backPressCount++;
@@ -1934,18 +1867,15 @@
                 } else {
                     backPressCount = 0;
                     if (backPressTimer) clearTimeout(backPressTimer);
-                    // Try to exit app, but NEVER reload page
                     if (navigator.app && navigator.app.exitApp) {
                         navigator.app.exitApp();
                     } else {
-                        // Just show a toast - don't use window.history.back() which causes reload
                         showToast("Use app switcher to close");
                     }
                 }
                 return;
             }
 
-            // 5. Login active? -> EXIT (but don't reload)
             const loginScreen = document.getElementById('loginScreen');
             if (loginScreen && loginScreen.classList.contains('active')) {
                 if (navigator.app && navigator.app.exitApp) {
@@ -1957,21 +1887,16 @@
         }
 
         function setupBackButton() {
-            // Push initial state so we can intercept back
             if (window.history && window.history.pushState) {
                 window.history.pushState({page: 'app'}, '', window.location.href);
             }
-
             window.addEventListener('popstate', function(e) {
                 e.preventDefault();
                 handleBackButton(e);
-                // Push state again so back button keeps working
                 if (window.history && window.history.pushState) {
                     window.history.pushState({page: 'app'}, '', window.location.href);
                 }
             });
-
-            // Cordova/Android back button
             document.addEventListener('backbutton', function(e) {
                 e.preventDefault();
                 handleBackButton(e);
@@ -1980,8 +1905,10 @@
 
         // ===== window.onload =====
         window.onload = function() {
-            const user = getSession();
+            // Setup Media Session for background playback
+            setupMediaSession();
 
+            const user = getSession();
             if (user) {
                 currentUser = user;
                 loadUserPlaylists();
