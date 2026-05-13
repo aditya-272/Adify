@@ -3,63 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adify - Premium Music Experience</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Syncopate:wght@700&family=Inter:wght@400;600&family=Poppins:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <title>Adify - Cloud Fixed</title>
     
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database-compat.js"></script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+
     <style>
-        /* [Aapka purana CSS yahan rahega - Maine ise short rakha hai space ke liye] */
-        :root { --sky-blue: #00BFFF; --bg-black: #020202; --primary: #0084ff; --danger: #ff4757; }
-        body { background: radial-gradient(circle at top right, #001f3f, #000814); color: white; font-family: "Inter", sans-serif; margin: 0; height: 100vh; overflow: hidden; }
-        .app-screen { position: fixed; inset: 0; display: none; flex-direction: column; overflow-y: auto; background: inherit; }
-        .app-screen.active { display: flex; }
-        #loadingOverlay { position: fixed; inset: 0; background: #000; z-index: 99999; display: flex; align-items: center; justify-content: center; flex-direction: column; }
+        :root { --sky-blue: #00BFFF; --bg-black: #020202; }
+        body { background: #000; color: white; font-family: 'Poppins', sans-serif; margin: 0; overflow: hidden; }
+        .screen { display: none; height: 100vh; width: 100%; position: fixed; flex-direction: column; }
+        .screen.active { display: flex; }
+        #loadingOverlay { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; justify-content: center; align-items: center; }
         #loadingOverlay.hidden { display: none; }
-        .loading-spinner { width: 40px; height: 40px; border: 3px solid rgba(0, 191, 255, 0.2); border-top-color: var(--sky-blue); border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin{to{transform:rotate(360deg)}}
+        .btn { padding: 12px 25px; border-radius: 25px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .btn-primary { background: var(--sky-blue); color: black; }
+        input { width: 80%; padding: 12px; margin-bottom: 15px; border-radius: 10px; border: 1px solid #333; background: #111; color: white; }
     </style>
 </head>
 <body>
 
     <div id="loadingOverlay">
-        <div class="loading-spinner"></div>
-        <div style="color:var(--sky-blue); margin-top:15px; letter-spacing:2px;">SYNCING CLOUD...</div>
-    </div>
-
-    <div id="loginScreen" class="app-screen active">
-        <div style="margin: auto; text-align: center; width: 300px;">
-            <h1 style="color: var(--sky-blue);">Adify</h1>
-            <input type="email" id="login-id" placeholder="Enter Email" style="width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 10px; background: #111; color: #fff; border: 1px solid #333;">
-            <button onclick="handleSubmit()" style="width: 100%; padding: 12px; background: var(--sky-blue); border: none; border-radius: 10px; font-weight: bold; cursor: pointer;">GET STARTED</button>
+        <div style="text-align: center;">
+            <i class="fas fa-sync fa-spin" style="font-size: 3rem; color: var(--sky-blue);"></i>
+            <p style="margin-top: 15px; letter-spacing: 2px;">ADIFY CLOUD SYNC...</p>
         </div>
     </div>
 
-    <div id="homeScreen" class="app-screen">
-        <div style="padding: 20px;">
-            <h2 id="welcomeText">Welcome Back</h2>
-            <div id="mainPlaylistGrid"></div>
-            <button onclick="doLogout()" style="margin-top: 50px; color: red; background: none; border: 1px solid red; padding: 10px; border-radius: 10px; cursor: pointer;">LOGOUT</button>
+    <div id="loginScreen" class="screen active">
+        <div style="margin: auto; text-align: center; width: 320px; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 20px;">
+            <h1 style="color: var(--sky-blue); font-size: 2.5rem; margin-bottom: 20px;">Adify</h1>
+            <input type="email" id="userEmail" placeholder="Enter Email">
+            <button class="btn btn-primary" onclick="handleAuth()">LOGIN TO CLOUD</button>
+        </div>
+    </div>
+
+    <div id="homeScreen" class="screen">
+        <div style="padding: 30px;">
+            <h2 id="welcomeText" style="color: var(--sky-blue);">Hello!</h2>
+            <p>Your search history and playlists are now synced across devices.</p>
+            <div id="status" style="background: #111; padding: 15px; border-radius: 10px; margin-top: 20px;">
+                <i class="fas fa-cloud-check" style="color: #2ed573;"></i> Cloud Connected
+            </div>
+            <button class="btn" style="margin-top: 40px; background: #ff4757; color: white;" onclick="logout()">LOGOUT</button>
         </div>
     </div>
 
     <script>
-        // 1. FIREBASE CONFIGURATION
+        // --- 1. FIREBASE INITIALIZATION ---
         const firebaseConfig = {
             databaseURL: "https://adify-4999f-default-rtdb.firebaseio.com/"
         };
-        
-        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
+
+        // Error check: Agar firebase load nahi hua toh console pe batayega
+        if (typeof firebase !== 'undefined') {
+            firebase.initializeApp(firebaseConfig);
+            var db = firebase.database();
+        } else {
+            alert("Firebase not loaded! Check your internet connection.");
+        }
 
         let currentUser = null;
         let userPlaylists = {};
         let recentSearches = [];
 
-        // 2. CORE SYNC LOGIC
+        // --- 2. CLOUD CORE LOGIC ---
         function getSafeId(email) {
-            return email ? email.replace(/[.$#[\]]/g, "_") : null;
+            return email.replace(/[.$#[\]]/g, "_");
         }
 
         async function syncFromCloud(email) {
@@ -70,11 +82,10 @@
                 if (data) {
                     userPlaylists = data.playlists || {};
                     recentSearches = data.searchHistory || [];
-                    currentUser = data.profile || currentUser;
-                    console.log("Cloud Data Synced Successfully");
+                    console.log("Cloud Sync: Success");
                 }
             } catch (e) {
-                console.error("Cloud Fetch Error:", e);
+                console.error("Cloud Sync Error:", e);
             }
         }
 
@@ -82,53 +93,55 @@
             if (!currentUser) return;
             const userId = getSafeId(currentUser.email);
             db.ref('users/' + userId).update({
-                profile: currentUser,
+                email: currentUser.email,
                 playlists: userPlaylists,
                 searchHistory: recentSearches,
                 lastSeen: Date.now()
             });
         }
 
-        // 3. AUTH HANDLERS
-        async function handleSubmit() {
-            const emailInput = document.getElementById('login-id').value;
-            if (!emailInput || !emailInput.includes('@')) return alert("Enter valid email");
+        // --- 3. UI HANDLERS ---
+        async function handleAuth() {
+            const email = document.getElementById('userEmail').value;
+            if (!email || !email.includes('@')) return alert("Enter a valid email!");
 
-            showLoader();
-            currentUser = { email: emailInput, name: "User" };
-            
-            // Session Backup
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+            currentUser = { email: email };
             localStorage.setItem('adify_session', JSON.stringify(currentUser));
             
-            await syncFromCloud(emailInput);
-            
-            document.getElementById('loginScreen').classList.remove('active');
-            document.getElementById('homeScreen').classList.add('active');
-            document.getElementById('welcomeText').innerText = "Hello, " + emailInput;
-            hideLoader();
+            await syncFromCloud(email);
+            updateUI(true);
         }
 
-        // 4. APP LIFECYCLE
-        function showLoader() { document.getElementById('loadingOverlay').classList.remove('hidden'); }
-        function hideLoader() { document.getElementById('loadingOverlay').classList.add('hidden'); }
+        function updateUI(isLoggedIn) {
+            const loader = document.getElementById('loadingOverlay');
+            if (isLoggedIn) {
+                document.getElementById('loginScreen').classList.remove('active');
+                document.getElementById('homeScreen').classList.add('active');
+                document.getElementById('welcomeText').innerText = "Hello, " + currentUser.email;
+            } else {
+                document.getElementById('loginScreen').classList.add('active');
+                document.getElementById('homeScreen').classList.remove('active');
+            }
+            loader.classList.add('hidden');
+        }
 
+        function logout() {
+            localStorage.removeItem('adify_session');
+            location.reload();
+        }
+
+        // --- 4. APP START ---
         window.onload = async function() {
             const session = localStorage.getItem('adify_session');
             if (session) {
                 currentUser = JSON.parse(session);
                 await syncFromCloud(currentUser.email);
-                document.getElementById('loginScreen').classList.remove('active');
-                document.getElementById('homeScreen').classList.add('active');
-                document.getElementById('welcomeText').innerText = "Hello, " + currentUser.email;
+                updateUI(true);
+            } else {
+                document.getElementById('loadingOverlay').classList.add('hidden');
             }
-            // Always hide loader at the end
-            hideLoader();
         };
-
-        function doLogout() {
-            localStorage.removeItem('adify_session');
-            location.reload();
-        }
     </script>
 </body>
 </html>
