@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adify - Cloud Fixed</title>
+    <title>Adify - Cloud Fixed Final</title>
     
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database-compat.js"></script>
@@ -12,16 +12,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;900&display=swap" rel="stylesheet">
 
     <style>
-        /* Aapka Original Design */
+        /* [AAPKA ORIGINAL CSS] */
         :root { --sky-blue: #00BFFF; --bg-black: #020202; }
-        body { background: #000; color: white; font-family: 'Poppins', sans-serif; margin: 0; overflow: hidden; }
-        .screen { display: none; height: 100vh; width: 100%; position: fixed; flex-direction: column; }
+        body { background: #000; color: white; font-family: 'Poppins', sans-serif; margin: 0; overflow-x: hidden; }
+        .screen { display: none; min-height: 100vh; width: 100%; flex-direction: column; }
         .screen.active { display: flex; }
-        #loadingOverlay { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; justify-content: center; align-items: center; transition: 0.5s; }
-        #loadingOverlay.hidden { opacity: 0; pointer-events: none; }
-        .btn { padding: 12px 25px; border-radius: 25px; border: none; cursor: pointer; font-weight: bold; }
-        .btn-primary { background: var(--sky-blue); color: black; }
-        input { width: 80%; padding: 12px; margin-bottom: 15px; border-radius: 10px; border: 1px solid #333; background: #111; color: white; outline: none; }
+        #loadingOverlay { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; justify-content: center; align-items: center; }
+        #loadingOverlay.hidden { display: none; }
+        .btn { padding: 12px 25px; border-radius: 25px; border: none; cursor: pointer; font-weight: bold; background: var(--sky-blue); color: black; }
+        input { width: 80%; max-width: 300px; padding: 12px; margin-bottom: 15px; border-radius: 10px; border: 1px solid #333; background: #111; color: white; outline: none; }
     </style>
 </head>
 <body>
@@ -29,53 +28,56 @@
     <div id="loadingOverlay">
         <div style="text-align: center;">
             <i class="fas fa-circle-notch fa-spin" style="font-size: 3rem; color: var(--sky-blue);"></i>
-            <p style="margin-top: 15px; letter-spacing: 2px;">INITIALIZING CLOUD...</p>
+            <p style="margin-top: 15px; letter-spacing: 2px;">SYNCING WITH CLOUD...</p>
         </div>
     </div>
 
     <div id="loginScreen" class="screen active">
-        <div style="margin: auto; text-align: center; width: 320px;">
-            <h1 style="font-size: 3rem; margin-bottom: 20px; font-weight: 900; color: var(--sky-blue);">ADIFY</h1>
-            <input type="email" id="userEmail" placeholder="Enter Email Address">
-            <button class="btn btn-primary" onclick="handleAuth()">LOGIN / SIGNUP</button>
+        <div style="margin: auto; text-align: center; width: 100%;">
+            <h1 style="font-size: 3.5rem; font-weight: 900; color: var(--sky-blue); margin-bottom: 10px;">ADIFY</h1>
+            <p style="margin-bottom: 30px; opacity: 0.7;">Your Music, Anywhere.</p>
+            <input type="email" id="login-id" placeholder="Enter Email Address">
+            <br>
+            <button class="btn" onclick="handleSubmit()">GET STARTED</button>
         </div>
     </div>
 
     <div id="homeScreen" class="screen">
         <div style="padding: 20px;">
-            <h2 id="welcomeText" style="color: var(--sky-blue);">Welcome</h2>
-            <div style="background: rgba(255,255,255,0.05); padding: 20px; border-radius: 15px; border-left: 4px solid var(--sky-blue);">
-                <p><i class="fas fa-check-circle"></i> Cloud Storage Active</p>
-                <p><i class="fas fa-sync"></i> Real-time Syncing</p>
+            <h2 id="userNameDisplay" style="color: var(--sky-blue);">Welcome Back!</h2>
+            <div style="background: rgba(255,255,255,0.05); padding: 20px; border-radius: 15px; border: 1px solid rgba(0, 191, 255, 0.2);">
+                <p><i class="fas fa-cloud" style="margin-right: 10px; color: var(--sky-blue);"></i> Cloud Sync Active</p>
+                <p><i class="fas fa-history" style="margin-right: 10px; color: var(--sky-blue);"></i> History & Playlists Synced</p>
             </div>
-            <button class="btn" style="margin-top: 30px; background: #ff4757; color: white;" onclick="logout()">LOGOUT</button>
+            <button class="btn" style="margin-top: 40px; background: #ff4757; color: white;" onclick="logout()">LOGOUT</button>
         </div>
     </div>
 
     <script>
-        // --- 2. CONFIGURATION ---
+        // --- FIREBASE SETUP ---
         const firebaseConfig = {
             databaseURL: "https://adify-4999f-default-rtdb.firebaseio.com/"
         };
 
-        // Initialize Firebase safely
+        // Initialize with Error Catching
         let db;
         try {
             firebase.initializeApp(firebaseConfig);
             db = firebase.database();
         } catch (e) {
-            console.error("Firebase Init Error:", e);
+            console.error("Firebase failed to load. Check internet.");
         }
 
         let currentUser = null;
         let userPlaylists = {};
         let recentSearches = [];
 
-        // --- 3. HELPER FUNCTIONS ---
+        // --- UTILITY ---
         function getSafeId(email) {
-            return email.replace(/[.$#[\]]/g, "_");
+            return email ? email.replace(/[.$#[\]]/g, "_") : null;
         }
 
+        // --- CLOUD SYNC ---
         async function syncFromCloud(email) {
             const userId = getSafeId(email);
             try {
@@ -84,15 +86,15 @@
                 if (data) {
                     userPlaylists = data.playlists || {};
                     recentSearches = data.searchHistory || [];
-                    console.log("Data fetched from cloud");
+                    console.log("Cloud data restored.");
                 }
             } catch (e) { console.error("Cloud Error:", e); }
         }
 
-        function saveToCloud() {
+        async function saveToCloud() {
             if (!currentUser) return;
             const userId = getSafeId(currentUser.email);
-            db.ref('users/' + userId).update({
+            await db.ref('users/' + userId).update({
                 email: currentUser.email,
                 playlists: userPlaylists,
                 searchHistory: recentSearches,
@@ -100,26 +102,33 @@
             });
         }
 
-        // --- 4. AUTH & NAVIGATION ---
-        async function handleAuth() {
-            const email = document.getElementById('userEmail').value;
-            if (!email || !email.includes('@')) return alert("Enter a valid email!");
+        // --- AUTH & UI ---
+        async function handleSubmit() {
+            const email = document.getElementById('login-id').value;
+            if (!email || !email.includes('@')) {
+                alert("Please enter a valid email.");
+                return;
+            }
 
             document.getElementById('loadingOverlay').classList.remove('hidden');
             currentUser = { email: email };
-            
-            // Local Session
             localStorage.setItem('adify_session', JSON.stringify(currentUser));
             
             await syncFromCloud(email);
-            showApp();
+            updateView(true);
         }
 
-        function showApp() {
-            document.getElementById('loginScreen').classList.remove('active');
-            document.getElementById('homeScreen').classList.add('active');
-            document.getElementById('welcomeText').innerText = "Hello, " + currentUser.email;
-            document.getElementById('loadingOverlay').classList.add('hidden');
+        function updateView(loggedIn) {
+            const loader = document.getElementById('loadingOverlay');
+            if (loggedIn) {
+                document.getElementById('loginScreen').classList.remove('active');
+                document.getElementById('homeScreen').classList.add('active');
+                document.getElementById('userNameDisplay').innerText = "Hello, " + currentUser.email.split('@')[0].toUpperCase();
+            } else {
+                document.getElementById('loginScreen').classList.add('active');
+                document.getElementById('homeScreen').classList.remove('active');
+            }
+            loader.classList.add('hidden');
         }
 
         function logout() {
@@ -127,17 +136,20 @@
             location.reload();
         }
 
-        // --- 5. INITIAL LOAD ---
+        // --- ON LOAD ---
         window.onload = async function() {
             const session = localStorage.getItem('adify_session');
             if (session) {
                 currentUser = JSON.parse(session);
                 await syncFromCloud(currentUser.email);
-                showApp();
+                updateView(true);
             } else {
                 document.getElementById('loadingOverlay').classList.add('hidden');
             }
         };
+
+        // Note: Playlists ya search history mein jab bhi update ho, 
+        // bas saveToCloud() call kar dena.
     </script>
 </body>
 </html>
