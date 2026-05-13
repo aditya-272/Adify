@@ -9,67 +9,69 @@
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database-compat.js"></script>
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;900&display=swap" rel="stylesheet">
 
     <style>
+        /* Aapka Original Design */
         :root { --sky-blue: #00BFFF; --bg-black: #020202; }
         body { background: #000; color: white; font-family: 'Poppins', sans-serif; margin: 0; overflow: hidden; }
         .screen { display: none; height: 100vh; width: 100%; position: fixed; flex-direction: column; }
         .screen.active { display: flex; }
-        #loadingOverlay { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; justify-content: center; align-items: center; }
-        #loadingOverlay.hidden { display: none; }
-        .btn { padding: 12px 25px; border-radius: 25px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        #loadingOverlay { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; justify-content: center; align-items: center; transition: 0.5s; }
+        #loadingOverlay.hidden { opacity: 0; pointer-events: none; }
+        .btn { padding: 12px 25px; border-radius: 25px; border: none; cursor: pointer; font-weight: bold; }
         .btn-primary { background: var(--sky-blue); color: black; }
-        input { width: 80%; padding: 12px; margin-bottom: 15px; border-radius: 10px; border: 1px solid #333; background: #111; color: white; }
+        input { width: 80%; padding: 12px; margin-bottom: 15px; border-radius: 10px; border: 1px solid #333; background: #111; color: white; outline: none; }
     </style>
 </head>
 <body>
 
     <div id="loadingOverlay">
         <div style="text-align: center;">
-            <i class="fas fa-sync fa-spin" style="font-size: 3rem; color: var(--sky-blue);"></i>
-            <p style="margin-top: 15px; letter-spacing: 2px;">ADIFY CLOUD SYNC...</p>
+            <i class="fas fa-circle-notch fa-spin" style="font-size: 3rem; color: var(--sky-blue);"></i>
+            <p style="margin-top: 15px; letter-spacing: 2px;">INITIALIZING CLOUD...</p>
         </div>
     </div>
 
     <div id="loginScreen" class="screen active">
-        <div style="margin: auto; text-align: center; width: 320px; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 20px;">
-            <h1 style="color: var(--sky-blue); font-size: 2.5rem; margin-bottom: 20px;">Adify</h1>
-            <input type="email" id="userEmail" placeholder="Enter Email">
-            <button class="btn btn-primary" onclick="handleAuth()">LOGIN TO CLOUD</button>
+        <div style="margin: auto; text-align: center; width: 320px;">
+            <h1 style="font-size: 3rem; margin-bottom: 20px; font-weight: 900; color: var(--sky-blue);">ADIFY</h1>
+            <input type="email" id="userEmail" placeholder="Enter Email Address">
+            <button class="btn btn-primary" onclick="handleAuth()">LOGIN / SIGNUP</button>
         </div>
     </div>
 
     <div id="homeScreen" class="screen">
-        <div style="padding: 30px;">
-            <h2 id="welcomeText" style="color: var(--sky-blue);">Hello!</h2>
-            <p>Your search history and playlists are now synced across devices.</p>
-            <div id="status" style="background: #111; padding: 15px; border-radius: 10px; margin-top: 20px;">
-                <i class="fas fa-cloud-check" style="color: #2ed573;"></i> Cloud Connected
+        <div style="padding: 20px;">
+            <h2 id="welcomeText" style="color: var(--sky-blue);">Welcome</h2>
+            <div style="background: rgba(255,255,255,0.05); padding: 20px; border-radius: 15px; border-left: 4px solid var(--sky-blue);">
+                <p><i class="fas fa-check-circle"></i> Cloud Storage Active</p>
+                <p><i class="fas fa-sync"></i> Real-time Syncing</p>
             </div>
-            <button class="btn" style="margin-top: 40px; background: #ff4757; color: white;" onclick="logout()">LOGOUT</button>
+            <button class="btn" style="margin-top: 30px; background: #ff4757; color: white;" onclick="logout()">LOGOUT</button>
         </div>
     </div>
 
     <script>
-        // --- 1. FIREBASE INITIALIZATION ---
+        // --- 2. CONFIGURATION ---
         const firebaseConfig = {
             databaseURL: "https://adify-4999f-default-rtdb.firebaseio.com/"
         };
 
-        // Error check: Agar firebase load nahi hua toh console pe batayega
-        if (typeof firebase !== 'undefined') {
+        // Initialize Firebase safely
+        let db;
+        try {
             firebase.initializeApp(firebaseConfig);
-            var db = firebase.database();
-        } else {
-            alert("Firebase not loaded! Check your internet connection.");
+            db = firebase.database();
+        } catch (e) {
+            console.error("Firebase Init Error:", e);
         }
 
         let currentUser = null;
         let userPlaylists = {};
         let recentSearches = [];
 
-        // --- 2. CLOUD CORE LOGIC ---
+        // --- 3. HELPER FUNCTIONS ---
         function getSafeId(email) {
             return email.replace(/[.$#[\]]/g, "_");
         }
@@ -82,11 +84,9 @@
                 if (data) {
                     userPlaylists = data.playlists || {};
                     recentSearches = data.searchHistory || [];
-                    console.log("Cloud Sync: Success");
+                    console.log("Data fetched from cloud");
                 }
-            } catch (e) {
-                console.error("Cloud Sync Error:", e);
-            }
+            } catch (e) { console.error("Cloud Error:", e); }
         }
 
         function saveToCloud() {
@@ -100,30 +100,26 @@
             });
         }
 
-        // --- 3. UI HANDLERS ---
+        // --- 4. AUTH & NAVIGATION ---
         async function handleAuth() {
             const email = document.getElementById('userEmail').value;
             if (!email || !email.includes('@')) return alert("Enter a valid email!");
 
             document.getElementById('loadingOverlay').classList.remove('hidden');
             currentUser = { email: email };
+            
+            // Local Session
             localStorage.setItem('adify_session', JSON.stringify(currentUser));
             
             await syncFromCloud(email);
-            updateUI(true);
+            showApp();
         }
 
-        function updateUI(isLoggedIn) {
-            const loader = document.getElementById('loadingOverlay');
-            if (isLoggedIn) {
-                document.getElementById('loginScreen').classList.remove('active');
-                document.getElementById('homeScreen').classList.add('active');
-                document.getElementById('welcomeText').innerText = "Hello, " + currentUser.email;
-            } else {
-                document.getElementById('loginScreen').classList.add('active');
-                document.getElementById('homeScreen').classList.remove('active');
-            }
-            loader.classList.add('hidden');
+        function showApp() {
+            document.getElementById('loginScreen').classList.remove('active');
+            document.getElementById('homeScreen').classList.add('active');
+            document.getElementById('welcomeText').innerText = "Hello, " + currentUser.email;
+            document.getElementById('loadingOverlay').classList.add('hidden');
         }
 
         function logout() {
@@ -131,13 +127,13 @@
             location.reload();
         }
 
-        // --- 4. APP START ---
+        // --- 5. INITIAL LOAD ---
         window.onload = async function() {
             const session = localStorage.getItem('adify_session');
             if (session) {
                 currentUser = JSON.parse(session);
                 await syncFromCloud(currentUser.email);
-                updateUI(true);
+                showApp();
             } else {
                 document.getElementById('loadingOverlay').classList.add('hidden');
             }
