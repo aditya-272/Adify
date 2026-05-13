@@ -574,7 +574,6 @@
             <i class="fas fa-headset"></i>
         </div>
     </div>
-
     <script>
 
         // ===== YOUTUBE API CONFIG =====
@@ -591,279 +590,6 @@
         let ytCurrentTime = 0;
         let ytTimeInterval = null;
         let ytPlayerReady = false;
-
-        // ===== FIREBASE CONFIG =====
-        const firebaseConfig = {
-            apiKey: "AIzaSyDLBqzimyPQj16sGRC2mJaP5N4ZxjwQvm4",
-            authDomain: "adify-music-9280e.firebaseapp.com",
-            databaseURL: "https://adify-music-9280e-default-rtdb.asia-southeast1.firebasedatabase.app",
-            projectId: "adify-music-9280e",
-            storageBucket: "adify-music-9280e.firebasestorage.app",
-            messagingSenderId: "534415071027",
-            appId: "1:534415071027:web:255cb8f8869d87459a5046"
-        };
-
-        let db = null;
-        let firebaseInitialized = false;
-
-        try {
-            firebase.initializeApp(firebaseConfig);
-            db = firebase.database();
-            firebaseInitialized = true;
-            console.log("[Adify] Firebase connected!");
-        } catch(e) {
-            console.error("[Adify] Firebase init error:", e);
-        }
-
-        // ===== FIREBASE HELPER FUNCTIONS =====
-        function getUserKey() {
-            if (currentUser && currentUser.email) {
-                return currentUser.email.replace(/\./g, '_');
-            }
-            return 'default';
-        }
-
-        function saveToFirebase(path, data) {
-            if (!db) return Promise.reject("Firebase not initialized");
-            return db.ref(path).set(data);
-        }
-
-        function getFromFirebase(path) {
-            if (!db) return Promise.resolve(null);
-            return db.ref(path).once('value').then(snap => snap.val()).catch(err => {
-                console.error("[Adify] Firebase read error:", err);
-                return null;
-            });
-        }
-
-        function updateFirebase(path, data) {
-            if (!db) return Promise.reject("Firebase not initialized");
-            return db.ref(path).update(data);
-        }
-
-        function removeFromFirebase(path) {
-            if (!db) return Promise.reject("Firebase not initialized");
-            return db.ref(path).remove();
-        }
-
-        // ===== RECENT SEARCHES - FIREBASE =====
-        async function getRecentSearches() {
-            if (!currentUser || !db) return [];
-            try {
-                const data = await getFromFirebase('users/' + getUserKey() + '/recentSearches');
-                return data || [];
-            } catch(e) { return []; }
-        }
-
-        async function saveRecentSearch(query) {
-            if (!query || query.trim().length < 2 || !currentUser || !db) return;
-            const cleanQuery = query.trim();
-            const searches = await getRecentSearches();
-            const filtered = searches.filter(s => s.toLowerCase() !== cleanQuery.toLowerCase());
-            filtered.unshift(cleanQuery);
-            const limited = filtered.slice(0, 10);
-            try {
-                await saveToFirebase('users/' + getUserKey() + '/recentSearches', limited);
-            } catch(e) {}
-            renderRecentSearches();
-        }
-
-        async function removeRecentSearch(query) {
-            if (!currentUser || !db) return;
-            const searches = await getRecentSearches();
-            const filtered = searches.filter(s => s !== query);
-            try {
-                await saveToFirebase('users/' + getUserKey() + '/recentSearches', filtered);
-            } catch(e) {}
-            renderRecentSearches();
-        }
-
-        async function clearAllRecentSearches() {
-            if (!currentUser || !db) return;
-            try {
-                await removeFromFirebase('users/' + getUserKey() + '/recentSearches');
-            } catch(e) {}
-            renderRecentSearches();
-        }
-
-        async function renderRecentSearches() {
-            const list = document.getElementById('recentSearchesList');
-            const searches = await getRecentSearches();
-            if (searches.length === 0) {
-                list.innerHTML = '<div class="no-recent">No recent searches</div>';
-                return;
-            }
-            let html = '';
-            searches.forEach(q => {
-                html += '<div class="recent-search-item" onclick="searchFromRecent(' + "'" + q.replace(/'/g, "\'") + "'" + ')"><div class="recent-search-left"><i class="fas fa-clock recent-search-icon"></i><span class="recent-search-text">' + q + '</span></div><i class="fas fa-times recent-search-delete" onclick="event.stopPropagation(); removeRecentSearch(' + "'" + q.replace(/'/g, "\'") + "'" + ')"></i></div>';
-            });
-            list.innerHTML = html;
-        }
-
-        function searchFromRecent(query) {
-            document.getElementById('searchPageInput').value = query;
-            document.getElementById('searchClearBtn').style.display = 'block';
-            executeSearch();
-        }
-
-        // ===== PLAYLIST PERSISTENCE - FIREBASE =====
-        async function saveUserPlaylists() {
-            if (!currentUser || !db) return;
-            try {
-                await saveToFirebase('users/' + getUserKey() + '/playlists', userPlaylists);
-                console.log("[Adify] Playlists saved to Firebase");
-            } catch(e) {
-                console.error("[Adify] Failed to save playlists:", e);
-            }
-        }
-
-        async function loadUserPlaylists() {
-            if (!currentUser || !db) return;
-            try {
-                const data = await getFromFirebase('users/' + getUserKey() + '/playlists');
-                if (data) {
-                    Object.keys(userPlaylists).forEach(pName => {
-                        if (data[pName] && Array.isArray(data[pName])) {
-                            userPlaylists[pName] = data[pName];
-                        }
-                    });
-                }
-            } catch(e) {
-                console.error("[Adify] Failed to load playlists:", e);
-            }
-        }
-
-        // ===== YOUTUBE SONGS - FIREBASE =====
-        async function saveYoutubeSongs() {
-            if (!currentUser || !db) return;
-            try {
-                await saveToFirebase('users/' + getUserKey() + '/youtubeSongs', youtubeSongs);
-            } catch(e) {}
-        }
-
-        async function loadYoutubeSongs() {
-            if (!currentUser || !db) { youtubeSongs = []; return; }
-            try {
-                const data = await getFromFirebase('users/' + getUserKey() + '/youtubeSongs');
-                youtubeSongs = data || [];
-            } catch(e) { youtubeSongs = []; }
-        }
-
-        // ===== SESSION - FIREBASE ONLY =====
-        async function saveSession(userData) {
-            if (!db) return;
-            try {
-                await saveToFirebase('users/' + userData.email.replace(/\./g, '_') + '/profile', userData);
-                await saveToFirebase('users/' + userData.email.replace(/\./g, '_') + '/lastActive', Date.now());
-            } catch(e) {
-                console.error("[Adify] Session save error:", e);
-            }
-        }
-
-        async function getSession() {
-            if (!db) return null;
-            try {
-                // Add timeout to prevent hanging
-                const timeoutPromise = new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('Firebase timeout')), 5000)
-                );
-                const snap = await Promise.race([
-                    db.ref('users').once('value'),
-                    timeoutPromise
-                ]);
-                const users = snap.val();
-                if (!users) return null;
-
-                let latestUser = null;
-                let latestTime = 0;
-
-                for (let key in users) {
-                    if (users[key] && users[key].lastActive && users[key].profile) {
-                        if (users[key].lastActive > latestTime) {
-                            latestTime = users[key].lastActive;
-                            latestUser = users[key].profile;
-                        }
-                    }
-                }
-                return latestUser;
-            } catch(e) {
-                console.error("[Adify] Session get error:", e);
-                return null;
-            }
-        }
-
-        // ===== USER AUTH - FIREBASE =====
-        async function saveUserToCloud(userData) {
-            if (!db) return Promise.reject("DB not initialized");
-            return saveToFirebase('users/' + userData.email.replace(/\./g, '_') + '/profile', userData);
-        }
-
-        async function loadUserFromCloud(email) {
-            if (!db) return null;
-            return getFromFirebase('users/' + email.replace(/\./g, '_') + '/profile');
-        }
-
-        async function updateProfileInCloud(email, updates) {
-            if (!db) return;
-            return updateFirebase('users/' + email.replace(/\./g, '_') + '/profile', updates);
-        }
-
-        async function checkEmailExists(email) {
-            if (!db) return false;
-            try {
-                const data = await getFromFirebase('users/' + email.replace(/\./g, '_') + '/profile');
-                return data !== null;
-            } catch(e) { return false; }
-        }
-
-        async function checkPhoneCount(phone) {
-            if (!db) return 0;
-            try {
-                const snap = await db.ref('users').once('value');
-                const users = snap.val();
-                if (!users) return 0;
-                let count = 0;
-                for (let key in users) {
-                    if (users[key] && users[key].profile && users[key].profile.phone === phone) {
-                        count++;
-                    }
-                }
-                return count;
-            } catch(e) { return 0; }
-        }
-
-        // ===== CROSS-DEVICE LOGIN - FIREBASE ONLY =====
-        async function findUserFirebase(lid) {
-            if (!db) return null;
-            try {
-                if (lid.includes('@')) {
-                    const data = await getFromFirebase('users/' + lid.replace(/\./g, '_') + '/profile');
-                    return data;
-                } else {
-                    const snap = await db.ref('users').once('value');
-                    const users = snap.val();
-                    if (!users) return null;
-                    for (let key in users) {
-                        if (users[key] && users[key].profile && users[key].profile.phone === lid) {
-                            return users[key].profile;
-                        }
-                    }
-                    return null;
-                }
-            } catch(e) {
-                console.error("[Adify] Find user error:", e);
-                return null;
-            }
-        }
-
-        async function tryFirebaseLogin(lid, lpass) {
-            const user = await findUserFirebase(lid);
-            if (!user) return null;
-            if (user.password === lpass) {
-                return user;
-            }
-            return { error: "WRONG PASSWORD" };
-        }
 
         // ===== MEDIA SESSION API =====
         function setupMediaSession() {
@@ -905,15 +631,251 @@
             }
         }
 
+        // ===== PAGE VISIBILITY =====
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                console.log('[Adify] App in background, continuing playback');
+            } else {
+                console.log('[Adify] App in foreground');
+            }
+        });
+
+        // ===== FIREBASE CONFIG =====
+        const firebaseConfig = {
+            apiKey: "AIzaSyDLBqzimyPQj16sGRC2mJaP5N4ZxjwQvm4",
+            authDomain: "adify-music-9280e.firebaseapp.com",
+            databaseURL: "https://adify-music-9280e-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "adify-music-9280e",
+            storageBucket: "adify-music-9280e.firebasestorage.app",
+            messagingSenderId: "534415071027",
+            appId: "1:534415071027:web:255cb8f8869d87459a5046"
+        };
+
+        let db = null;
+        let firebaseReady = false;
+        try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+            firebaseReady = true;
+            console.log("[Adify] Firebase connected!");
+        } catch(e) {
+            console.error("[Adify] Firebase init error:", e);
+            firebaseReady = false;
+        }
+
+        function getUserKey(email) {
+            return email ? email.replace(/\./g, '_').replace(/@/g, '_at_') : 'guest';
+        }
+
+        // ===== FIREBASE USER OPERATIONS =====
+        function saveUserToCloud(userData) {
+            if (!db || !firebaseReady) return Promise.reject("DB not initialized");
+            return db.ref('users/' + getUserKey(userData.email)).set(userData);
+        }
+
+        function loadUserFromCloud(email) {
+            if (!db || !firebaseReady) return Promise.resolve(null);
+            return db.ref('users/' + getUserKey(email)).once('value')
+                .then(snapshot => snapshot.val())
+                .catch(err => { console.error("[Adify] Cloud load error:", err); return null; });
+        }
+
+        function updateProfileInCloud(email, updates) {
+            if (!db || !firebaseReady) return Promise.resolve();
+            return db.ref('users/' + getUserKey(email)).update(updates)
+                .then(() => console.log("[Adify] Profile updated in cloud!"))
+                .catch(err => console.error("[Adify] Cloud update error:", err));
+        }
+
+        // ===== FIREBASE PLAYLISTS =====
+        function saveUserPlaylistsToCloud() {
+            if (!db || !firebaseReady || !currentUser) return Promise.resolve();
+            return db.ref('playlists/' + getUserKey(currentUser.email)).set(userPlaylists)
+                .then(() => console.log("[Adify] Playlists saved to cloud!"))
+                .catch(err => console.error("[Adify] Playlist save error:", err));
+        }
+
+        function loadUserPlaylistsFromCloud() {
+            if (!db || !firebaseReady || !currentUser) return Promise.resolve();
+            return db.ref('playlists/' + getUserKey(currentUser.email)).once('value')
+                .then(snapshot => {
+                    const data = snapshot.val();
+                    if (data) {
+                        Object.keys(userPlaylists).forEach(pName => {
+                            if (data[pName] && Array.isArray(data[pName])) {
+                                userPlaylists[pName] = data[pName];
+                            }
+                        });
+                        console.log("[Adify] Playlists loaded from cloud!");
+                    }
+                })
+                .catch(err => console.error("[Adify] Playlist load error:", err));
+        }
+
+        // ===== FIREBASE SEARCH HISTORY =====
+        function getRecentSearchesFromCloud() {
+            if (!db || !firebaseReady || !currentUser) return Promise.resolve([]);
+            return db.ref('searches/' + getUserKey(currentUser.email)).once('value')
+                .then(snapshot => {
+                    const data = snapshot.val();
+                    return data ? (Array.isArray(data) ? data : []) : [];
+                })
+                .catch(err => { console.error("[Adify] Search load error:", err); return []; });
+        }
+
+        function saveRecentSearchToCloud(query) {
+            if (!db || !firebaseReady || !currentUser || !query || query.trim().length < 2) return Promise.resolve();
+            const cleanQuery = query.trim();
+            return getRecentSearchesFromCloud().then(searches => {
+                const filtered = searches.filter(s => s.toLowerCase() !== cleanQuery.toLowerCase());
+                filtered.unshift(cleanQuery);
+                const limited = filtered.slice(0, 10);
+                return db.ref('searches/' + getUserKey(currentUser.email)).set(limited)
+                    .then(() => console.log("[Adify] Search saved to cloud!"))
+                    .catch(err => console.error("[Adify] Search save error:", err));
+            });
+        }
+
+        function removeRecentSearchFromCloud(query) {
+            if (!db || !firebaseReady || !currentUser) return Promise.resolve();
+            return getRecentSearchesFromCloud().then(searches => {
+                const filtered = searches.filter(s => s !== query);
+                return db.ref('searches/' + getUserKey(currentUser.email)).set(filtered)
+                    .then(() => console.log("[Adify] Search removed from cloud!"))
+                    .catch(err => console.error("[Adify] Search remove error:", err));
+            });
+        }
+
+        function clearAllRecentSearchesFromCloud() {
+            if (!db || !firebaseReady || !currentUser) return Promise.resolve();
+            return db.ref('searches/' + getUserKey(currentUser.email)).remove()
+                .then(() => console.log("[Adify] All searches cleared from cloud!"))
+                .catch(err => console.error("[Adify] Search clear error:", err));
+        }
+
+        // ===== FIREBASE YOUTUBE SONGS =====
+        function saveYoutubeSongsToCloud() {
+            if (!db || !firebaseReady || !currentUser) return Promise.resolve();
+            return db.ref('youtube_songs/' + getUserKey(currentUser.email)).set(youtubeSongs)
+                .then(() => console.log("[Adify] YouTube songs saved to cloud!"))
+                .catch(err => console.error("[Adify] YT songs save error:", err));
+        }
+
+        function loadYoutubeSongsFromCloud() {
+            if (!db || !firebaseReady || !currentUser) return Promise.resolve();
+            return db.ref('youtube_songs/' + getUserKey(currentUser.email)).once('value')
+                .then(snapshot => {
+                    const data = snapshot.val();
+                    if (data && Array.isArray(data)) {
+                        youtubeSongs = data;
+                        console.log("[Adify] YouTube songs loaded from cloud!");
+                    } else {
+                        youtubeSongs = [];
+                    }
+                })
+                .catch(err => { console.error("[Adify] YT songs load error:", err); youtubeSongs = []; });
+        }
+
+        // ===== SESSION MANAGEMENT (Firebase only) =====
+        function saveSession(userData) {
+            if (!db || !firebaseReady) return Promise.resolve();
+            return db.ref('sessions/' + getUserKey(userData.email)).set({
+                ...userData,
+                lastLogin: Date.now()
+            }).catch(err => console.error("[Adify] Session save error:", err));
+        }
+
+        function getSession() {
+            return new Promise((resolve) => {
+                if (!db || !firebaseReady) { resolve(null); return; }
+                db.ref('sessions').once('value')
+                    .then(snapshot => {
+                        const sessions = snapshot.val();
+                        if (sessions) {
+                            const keys = Object.keys(sessions);
+                            if (keys.length > 0) {
+                                const latest = sessions[keys[0]];
+                                resolve(latest);
+                            } else {
+                                resolve(null);
+                            }
+                        } else {
+                            resolve(null);
+                        }
+                    })
+                    .catch(err => { console.error("[Adify] Session get error:", err); resolve(null); });
+            });
+        }
+
+        function clearSession() {
+            if (!db || !firebaseReady || !currentUser) return Promise.resolve();
+            return db.ref('sessions/' + getUserKey(currentUser.email)).remove()
+                .catch(err => console.error("[Adify] Session clear error:", err));
+        }
+
+        // ===== RECENT SEARCHES (Firebase) =====
+        async function getRecentSearches() {
+            if (currentUser && db && firebaseReady) {
+                const searches = await getRecentSearchesFromCloud();
+                return searches;
+            }
+            return [];
+        }
+
+        async function saveRecentSearch(query) {
+            if (!query || query.trim().length < 2) return;
+            if (currentUser && db && firebaseReady) {
+                await saveRecentSearchToCloud(query);
+            }
+            renderRecentSearches();
+        }
+
+        async function removeRecentSearch(query) {
+            if (currentUser && db && firebaseReady) {
+                await removeRecentSearchFromCloud(query);
+            }
+            renderRecentSearches();
+        }
+
+        async function clearAllRecentSearches() {
+            if (currentUser && db && firebaseReady) {
+                await clearAllRecentSearchesFromCloud();
+            }
+            renderRecentSearches();
+        }
+
+        async function renderRecentSearches() {
+            const list = document.getElementById('recentSearchesList');
+            const searches = await getRecentSearches();
+            if (searches.length === 0) {
+                list.innerHTML = '<div class="no-recent">No recent searches</div>';
+                return;
+            }
+            let html = '';
+            searches.forEach(q => {
+                const escapedQ = q.replace(/'/g, "\'").replace(/"/g, '\"');
+                html += '<div class="recent-search-item" onclick="searchFromRecent(' + "'" + escapedQ + "'" + ')"><div class="recent-search-left"><i class="fas fa-clock recent-search-icon"></i><span class="recent-search-text">' + q + '</span></div><i class="fas fa-times recent-search-delete" onclick="event.stopPropagation(); removeRecentSearch(' + "'" + escapedQ + "'" + ')"></i></div>';
+            });
+            list.innerHTML = html;
+        }
+
+        function searchFromRecent(query) {
+            document.getElementById('searchPageInput').value = query;
+            document.getElementById('searchClearBtn').style.display = 'block';
+            executeSearch();
+        }
+
         // ===== SEARCH SCREEN FUNCTIONS =====
         function openSearchScreen(e) {
             if (e) e.stopPropagation();
             showScreen('searchScreen');
             renderRecentSearches();
-            setTimeout(() => { document.getElementById('searchPageInput').focus(); }, 100);
+            setTimeout(() => {
+                document.getElementById('searchPageInput').focus();
+            }, 100);
         }
 
-        async function closeSearch() {
+        function closeSearch() {
             if (searchTimeout) clearTimeout(searchTimeout);
             document.getElementById('searchPageInput').value = '';
             document.getElementById('searchClearBtn').style.display = 'none';
@@ -946,7 +908,9 @@
                 return;
             }
             if (searchTimeout) clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => { executeSearch(); }, 800);
+            searchTimeout = setTimeout(() => {
+                executeSearch();
+            }, 800);
         }
 
         async function executeSearch() {
@@ -1012,7 +976,7 @@
                         });
                     }
                 });
-                await saveYoutubeSongs();
+                await saveYoutubeSongsToCloud();
 
                 let html = '';
                 youtubeResults.forEach((song) => {
@@ -1026,9 +990,24 @@
             }
         }
 
+        // ===== PLAYLIST PERSISTENCE (Firebase) =====
+        async function saveUserPlaylists() {
+            if (currentUser && db && firebaseReady) {
+                await saveUserPlaylistsToCloud();
+            }
+        }
+
+        async function loadUserPlaylists() {
+            if (currentUser && db && firebaseReady) {
+                await loadUserPlaylistsFromCloud();
+            }
+        }
+
         function ytSongItemTemplate(s) {
             const isP = currentYouTubeId === s.videoId;
-            return '<div class="song-item ' + (isP ? 'playing-active' : '') + '" onclick="playYouTubeSong(' + "'" + s.videoId + "'" + ', ' + "'" + s.title.replace(/'/g, "\'") + "'" + ', ' + "'" + s.artist.replace(/'/g, "\'") + "'" + ', ' + "'" + s.image + "'" + ')"><div style="display:flex; align-items:center; flex:1"><div class="img-container"><img src="' + s.image + '" class="song-img"></div><div style="overflow:hidden; flex:1"><h4>' + s.title + '</h4><p style="font-size:10px; opacity:0.5">' + s.artist + '</p></div></div><div class="more-btn" onclick="event.stopPropagation(); openYtMenu(event, ' + "'" + s.videoId + "'" + ')">⋮</div></div>';
+            const escapedTitle = s.title.replace(/'/g, "\'");
+            const escapedArtist = s.artist.replace(/'/g, "\'");
+            return '<div class="song-item ' + (isP ? 'playing-active' : '') + '" onclick="playYouTubeSong(' + "'" + s.videoId + "', '" + escapedTitle + "', '" + escapedArtist + "', '" + s.image + "')" + '"><div style="display:flex; align-items:center; flex:1"><div class="img-container"><img src="' + s.image + '" class="song-img"></div><div style="overflow:hidden; flex:1"><h4>' + s.title + '</h4><p style="font-size:10px; opacity:0.5">' + s.artist + '</p></div></div><div class="more-btn" onclick="event.stopPropagation(); openYtMenu(event, ' + "'" + s.videoId + "')" + '">⋮</div></div>';
         }
 
         function openYtMenu(e, videoId) {
@@ -1036,7 +1015,7 @@
             const popup = document.getElementById('globalPopup');
             document.getElementById('playlistOptions').innerHTML = playlistsData.map(p => {
                 const ex = userPlaylists[p.name].some(x => x.ytId === videoId);
-                return '<div class="menu-item" onclick="addYtToPlaylist(' + "'" + videoId + "'" + ', ' + "'" + p.name + "'" + ', ' + ex + ')"><span>' + p.name + '</span><span style="color:' + (ex ? 'var(--danger)' : 'var(--primary)') + '; font-weight:bold;">' + (ex ? 'REMOVE' : 'ADD') + '</span></div>';
+                return '<div class="menu-item" onclick="addYtToPlaylist(' + "'" + videoId + "', '" + p.name + "', " + ex + ')"><span>' + p.name + '</span><span style="color:' + (ex ? 'var(--danger)' : 'var(--primary)') + '; font-weight:bold;">' + (ex ? 'REMOVE' : 'ADD') + '</span></div>';
             }).join('');
             popup.classList.add('show');
         }
@@ -1086,9 +1065,7 @@
             loadYouTubePlayer(videoId);
             isAutoPlayMode = true;
             startYoutubeAutoPlay(videoId);
-
             updateMediaSessionMetadata(title, channel, thumbUrl);
-
             showPopup("▶ PLAYING", "success");
             refreshView();
         }
@@ -1275,6 +1252,25 @@
             }
         }
 
+        // ===== LOGIN FUNCTIONS (Firebase Only) =====
+        function updateProfileUI(user) {
+            document.getElementById("display-name").innerText = user.name || "Adify User";
+            document.getElementById("p-gender").innerText = user.gender || "Male";
+            document.getElementById("p-email").innerText = user.email || "user@adify.com";
+            document.getElementById("p-phone").innerText = user.phone ? "+91 " + user.phone : "+91 98765 43210";
+            document.getElementById("p-age").innerText = (user.age || 22) + " Years";
+            const pfp = user.photo || "https://api.dicebear.com/7.x/avataaars/svg?seed=" + (user.name || "User");
+            document.getElementById('main-pfp').src = pfp;
+            document.getElementById('homeProfileImg').src = pfp;
+        }
+
+        let isRegisterMode = false;
+        let selectedGender = "Male";
+        let currentPhoto = null;
+        let selectedGenderProfile = "Male";
+        let currentUser = null;
+        const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
+
         // ===== NAVIGATION =====
         function showScreen(screenId) {
             document.querySelectorAll(".app-screen, .profile-screen").forEach(s => s.classList.remove("active"));
@@ -1298,8 +1294,9 @@
             document.getElementById("profileScreen").classList.remove("active"); 
         }
 
-        function doLogout() {
+        async function doLogout() {
             stopAllPlayback();
+            await clearSession();
             currentUser = null;
             hideLogout();
             closeProfile();
@@ -1313,7 +1310,6 @@
             isRegisterMode = false;
         }
 
-        // ===== LOGIN FUNCTIONS =====
         function togglePass(inputId, icon) {
             const input = document.getElementById(inputId);
             input.type = input.type === "password" ? "text" : "password";
@@ -1355,6 +1351,50 @@
             document.getElementById('switch-text').innerHTML = isReg ? 'Already a member? <span onclick="toggleAuth(false)">Log In</span>' : 'New here? <span onclick="toggleAuth(true)">Create Account</span>';
         }
 
+        // ===== FIREBASE LOGIN =====
+        async function tryFirebaseLogin(lid, lpass) {
+            if (!db || !firebaseReady) return { error: "FIREBASE NOT CONNECTED" };
+
+            if (lid.includes('@')) {
+                const user = await loadUserFromCloud(lid);
+                if (!user) return null;
+                if (user.password === lpass) {
+                    return user;
+                } else {
+                    return { error: "WRONG PASSWORD" };
+                }
+            } else {
+                // Phone login - search all users
+                const snapshot = await db.ref('users').once('value');
+                const users = snapshot.val();
+                if (!users) return null;
+                for (let key in users) {
+                    if (users[key] && users[key].phone === lid) {
+                        if (users[key].password === lpass) {
+                            return users[key];
+                        } else {
+                            return { error: "WRONG PASSWORD" };
+                        }
+                    }
+                }
+                return null;
+            }
+        }
+
+        async function finalizeLogin(user) {
+            currentUser = user;
+            await saveSession(user);
+            await loadUserPlaylistsFromCloud();
+            await loadYoutubeSongsFromCloud();
+
+            if (currentUser.photo) {
+                document.getElementById('main-pfp').src = currentUser.photo;
+                document.getElementById('homeProfileImg').src = currentUser.photo;
+            }
+            showPopup(`WELCOME BACK, ${currentUser.name.toUpperCase()}`, "success");
+            setTimeout(() => { openHome(); }, 1000);
+        }
+
         async function handleSubmit() {
             if (!isRegisterMode) {
                 const lid = document.getElementById('login-id').value.toLowerCase().trim();
@@ -1363,7 +1403,8 @@
                     showPopup("MASTER LOGIN SUCCESS", "success");
                     currentUser = { name: 'Master', email: 'master@adify.com', phone: '0000000000', gender: 'Male', age: 21 };
                     await saveSession(currentUser);
-                    await loadUserPlaylists();
+                    await loadUserPlaylistsFromCloud();
+                    await loadYoutubeSongsFromCloud();
                     setTimeout(() => { openHome(); }, 1000); 
                     return;
                 }
@@ -1373,9 +1414,13 @@
                 if (result === null) {
                     showPopup("USER NOT FOUND", "error");
                 } else if (result.error) {
-                    showPopup(result.error, "error");
+                    if (result.error.includes("FIREBASE")) {
+                        showPopup("SERVER ERROR - CHECK CONSOLE", "error");
+                    } else {
+                        showPopup(result.error, "error");
+                    }
                 } else {
-                    finalizeLogin(result);
+                    await finalizeLogin(result);
                 }
             } else {
                 const name = document.getElementById('full-name').value;
@@ -1385,17 +1430,28 @@
                 const pass = document.getElementById('reg-pass').value;
                 const age = document.getElementById('reg-age').value;
 
-                const emailExists = await checkEmailExists(email);
-                if (emailExists) { showPopup("EMAIL ALREADY REGISTERED", "error"); return; }
+                // Check if email already registered in Firebase
+                const existingUser = await loadUserFromCloud(email);
+                if (existingUser) { showPopup("EMAIL ALREADY REGISTERED", "error"); return; }
 
-                const phoneCount = await checkPhoneCount(phone);
+                // Check phone count
+                const phoneSnapshot = await db.ref('users').once('value');
+                const allUsers = phoneSnapshot.val() || {};
+                let phoneCount = 0;
+                for (let key in allUsers) {
+                    if (allUsers[key].phone === phone) phoneCount++;
+                }
                 if (phoneCount >= 3) { showPopup("MAX 3 ACCOUNTS PER NUMBER", "error"); return; }
 
                 if (name && emailRegex.test(emailInput) && phone.length === 10 && pass.length >= 8 && age >= 18) {
                     const userData = { name: name, email: email, phone: phone, password: pass, gender: selectedGender, age: age, photo: null };
-                    await saveUserToCloud(userData);
-                    await saveSession(userData);
-                    showPopup("REGISTERED SUCCESSFULLY", "success");
+                    showPopup("SYNCING TO CLOUD...", "success");
+                    try {
+                        await saveUserToCloud(userData);
+                        showPopup("REGISTERED SUCCESSFULLY", "success");
+                    } catch(e) {
+                        showPopup("REGISTERED - CLOUD SYNC FAILED", "error");
+                    }
                     setTimeout(() => {
                         toggleAuth(false);
                         showPopup("PLEASE LOG IN WITH YOUR DETAILS", "success");
@@ -1404,24 +1460,6 @@
                     showPopup("PLEASE FIX ALL ERRORS", "error"); 
                 }
             }
-        }
-
-        async function finalizeLogin(user) {
-            currentUser = user;
-            await saveSession(user);
-            await loadUserPlaylists();
-            await loadYoutubeSongs();
-            const cloudData = await loadUserFromCloud(user.email);
-            if (cloudData) {
-                currentUser = cloudData;
-                await saveSession(cloudData);
-            }
-            if (currentUser.photo) {
-                document.getElementById('main-pfp').src = currentUser.photo;
-                document.getElementById('homeProfileImg').src = currentUser.photo;
-            }
-            showPopup(`WELCOME BACK, ${currentUser.name.toUpperCase()}`, "success");
-            setTimeout(() => { openHome(); }, 1000);
         }
 
         // ===== HOME FUNCTIONS =====
@@ -1436,7 +1474,7 @@
             const popup = document.getElementById('globalPopup');
             document.getElementById('playlistOptions').innerHTML = playlistsData.map(p => {
                 const ex = userPlaylists[p.name].some(x => x.id === id);
-                return '<div class="menu-item" onclick="playlistAction(' + id + ', ' + "'" + p.name + "'" + ', ' + ex + ')"><span>' + p.name + '</span><span style="color:' + (ex ? 'var(--danger)' : 'var(--primary)') + '; font-weight:bold;">' + (ex ? 'REMOVE' : 'ADD') + '</span></div>';
+                return '<div class="menu-item" onclick="playlistAction(' + id + ', ' + "'" + p.name + "', " + ex + ')"><span>' + p.name + '</span><span style="color:' + (ex ? 'var(--danger)' : 'var(--primary)') + '; font-weight:bold;">' + (ex ? 'REMOVE' : 'ADD') + '</span></div>';
             }).join(''); popup.classList.add('show');
         }
         async function playlistAction(id, pN, ex) {
@@ -1452,20 +1490,24 @@
             if (isSelectionMode) {
                 clickAction = "toggleSelectSong(" + s.id + ")";
             } else if (s.ytId) {
-                clickAction = "playYouTubeSong('" + s.ytId + "', '" + s.title.replace(/'/g, "\'") + "', '" + s.artist.replace(/'/g, "\'") + "', '" + s.image + "')";
+                const escapedTitle = s.title.replace(/'/g, "\'");
+                const escapedArtist = s.artist.replace(/'/g, "\'");
+                clickAction = "playYouTubeSong('" + s.ytId + "', '" + escapedTitle + "', '" + escapedArtist + "', '" + s.image + "')";
             } else {
-                clickAction = "playSong('" + s.title.replace(/'/g, "\'") + "','" + s.artist.replace(/'/g, "\'") + "','" + s.url + "','" + s.image + "')";
+                const escapedTitle = s.title.replace(/'/g, "\'");
+                const escapedArtist = s.artist.replace(/'/g, "\'");
+                clickAction = "playSong('" + escapedTitle + "','" + escapedArtist + "','" + s.url + "','" + s.image + "')";
             }
             const moreBtn = !isSelectionMode 
                 ? (s.ytId 
-                    ? '<div class="more-btn" onclick="event.stopPropagation(); openYtMenu(event, ' + "'" + s.ytId + "'" + ')">⋮</div>' 
+                    ? '<div class="more-btn" onclick="event.stopPropagation(); openYtMenu(event, ' + "'" + s.ytId + "')" + '">⋮</div>' 
                     : '<div class="more-btn" onclick="openMenu(event, ' + s.id + ')">⋮</div>')
                 : '<div style="color:var(--danger); font-weight:bold; margin-right:10px;">' + (isS ? '✓' : '') + '</div>';
             return '<div class="song-item ' + (isP ? 'playing-active' : '') + ' ' + (isS ? 'selected-to-remove' : '') + '" onclick="' + clickAction + '"><div style="display:flex; align-items:center; flex:1"><div class="img-container"><img src="' + s.image + '" class="song-img"></div><div style="overflow:hidden; flex:1"><h4>' + s.title + '</h4><p style="font-size:10px; opacity:0.5">' + s.artist + '</p></div></div>' + moreBtn + '</div>';
         }
         function renderAll() {
             try {
-                document.getElementById('mainPlaylistGrid').innerHTML = playlistsData.filter(p => p.name.toLowerCase().includes(searchQuery)).map(p => '<div class="card" onclick="openPlaylist(' + "'" + p.name + "'" + ')"><div class="art" style="background: url(' + "'" + p.img + "');" + '"></div><p style="font-size:10px;">' + p.name + '</p></div>').join('');
+                document.getElementById('mainPlaylistGrid').innerHTML = playlistsData.filter(p => p.name.toLowerCase().includes(searchQuery)).map(p => '<div class="card" onclick="openPlaylist(' + "'" + p.name + "')" + '"><div class="art" style="background: url(' + "'" + p.img + "');" + '"></div><p style="font-size:10px;">' + p.name + '</p></div>').join('');
                 const merged = [...allSongs];
                 if (youtubeSongs && Array.isArray(youtubeSongs)) {
                     youtubeSongs.forEach(yt => {
@@ -1735,10 +1777,14 @@
                 currentUser.age = newAge;
                 currentUser.gender = selectedGenderProfile;
                 if (currentPhoto) currentUser.photo = currentPhoto;
-                await saveSession(currentUser);
+
+                // Save to Firebase
+                await saveUserToCloud(currentUser);
                 await updateProfileInCloud(currentUser.email, {
                     name: newName, age: newAge, gender: selectedGenderProfile, photo: currentUser.photo
                 });
+                await saveSession(currentUser);
+
                 document.getElementById('display-name').innerText = newName;
                 document.getElementById('p-gender').innerText = selectedGenderProfile;
                 document.getElementById('p-age').innerText = newAge + " Years";
@@ -1756,39 +1802,19 @@
         function showLogout() { document.getElementById('logout-modal').style.display = 'flex'; }
         function hideLogout() { document.getElementById('logout-modal').style.display = 'none'; }
 
-        function updateProfileUI(user) {
-            document.getElementById("display-name").innerText = user.name || "Adify User";
-            document.getElementById("p-gender").innerText = user.gender || "Male";
-            document.getElementById("p-email").innerText = user.email || "user@adify.com";
-            document.getElementById("p-phone").innerText = user.phone ? "+91 " + user.phone : "+91 98765 43210";
-            document.getElementById("p-age").innerText = (user.age || 22) + " Years";
-            const pfp = user.photo || "https://api.dicebear.com/7.x/avataaars/svg?seed=" + (user.name || "User");
-            document.getElementById('main-pfp').src = pfp;
-            document.getElementById('homeProfileImg').src = pfp;
+        async function saveYoutubeSongs() {
+            if (currentUser && db && firebaseReady) {
+                await saveYoutubeSongsToCloud();
+            }
         }
 
-        let isRegisterMode = false;
-        let selectedGender = "Male";
-        let currentPhoto = null;
-        let selectedGenderProfile = "Male";
-        let currentUser = null;
-        const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
-
-        const audio = document.getElementById("mainAudio");
-        let currentUrl = "", searchQuery = "", activeP = null, isDragging = false, isSelectionMode = false, currentTrackData = null, selectedSongs = new Set(), youtubeSongs = [];
-
-        const userPlaylists = { "Lo-Fi Sleep 😴": [], "Study Focus 📖": [], "Traveling ✈️": [], "My Playlist 💖": [] };
-
-        const allSongs = [
-            { id: 1, title: "Udariyan", artist: "Aditya", url: "https://www.image2url.com/r2/default/audio/1778420635219-a057d459-d0af-413e-bd2f-5f148740396c.mp3", image: "https://files.catbox.moe/0j9stc.jpeg" },
-            { id: 2, title: "BEST SHORT SONG", artist: "Aditya", url: "https://www.image2url.com/r2/default/audio/1778446960362-cacf9cfe-95fa-4724-80cd-79e9e3e38a08.mp3", image: "https://files.catbox.moe/0j9stc.jpeg" }
-        ];
-        const playlistsData = [
-            { name: "Lo-Fi Sleep 😴", img: "https://files.catbox.moe/0j9stc.jpeg" },
-            { name: "Study Focus 📖", img: "https://files.catbox.moe/t07xmg.jpeg" },
-            { name: "Traveling ✈️", img: "https://files.catbox.moe/pzdmjo.jpeg" },
-            { name: "My Playlist 💖", img: "https://images.unsplash.com/photo-1493225255756-d9584f8606e9?w=300" }
-        ];
+        async function loadYoutubeSongs() {
+            if (currentUser && db && firebaseReady) {
+                await loadYoutubeSongsFromCloud();
+            } else {
+                youtubeSongs = [];
+            }
+        }
 
         // ===== BACK BUTTON HANDLER =====
         let isHandlingBack = false;
@@ -1865,41 +1891,66 @@
             }, false);
         }
 
+        // ===== DATA =====
+        const userPlaylists = { "Lo-Fi Sleep 😴": [], "Study Focus 📖": [], "Traveling ✈️": [], "My Playlist 💖": [] };
+        const allSongs = [
+            { id: 1, title: "Udariyan", artist: "Aditya", url: "https://www.image2url.com/r2/default/audio/1778420635219-a057d459-d0af-413e-bd2f-5f148740396c.mp3", image: "https://files.catbox.moe/0j9stc.jpeg" },
+            { id: 2, title: "BEST SHORT SONG", artist: "Aditya", url: "https://www.image2url.com/r2/default/audio/1778446960362-cacf9cfe-95fa-4724-80cd-79e9e3e38a08.mp3", image: "https://files.catbox.moe/0j9stc.jpeg" }
+        ];
+        const playlistsData = [
+            { name: "Lo-Fi Sleep 😴", img: "https://files.catbox.moe/0j9stc.jpeg" },
+            { name: "Study Focus 📖", img: "https://files.catbox.moe/t07xmg.jpeg" },
+            { name: "Traveling ✈️", img: "https://files.catbox.moe/pzdmjo.jpeg" },
+            { name: "My Playlist 💖", img: "https://images.unsplash.com/photo-1493225255756-d9584f8606e9?w=300" }
+        ];
+
+        // ===== AUDIO STATE =====
+        const audio = document.getElementById("mainAudio");
+        let currentUrl = "", searchQuery = "", activeP = null, isDragging = false, isSelectionMode = false, currentTrackData = null, selectedSongs = new Set(), youtubeSongs = [];
+
         // ===== window.onload =====
-        window.onload = function() {
-            // IMMEDIATELY show login screen - no waiting
-            document.getElementById('loadingOverlay').style.display = 'none';
-            document.getElementById('loginScreen').classList.add('active');
+        window.onload = async function() {
+            setupMediaSession();
 
-            // Try to load session in background
-            setTimeout(async function() {
-                try {
-                    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
-                        const user = await getSession();
-                        if (user) {
-                            currentUser = user;
-                            await loadUserPlaylists();
-                            await loadYoutubeSongs();
-                            updateProfileUI(currentUser);
-                            document.getElementById('loginScreen').classList.remove('active');
-                            document.getElementById('homeScreen').classList.add('active');
-                            renderAll();
-                            detectDevice();
-                            showPopup("WELCOME BACK, " + (currentUser.name || "USER").toUpperCase(), "success");
+            const user = await getSession();
+            if (user && user.email) {
+                currentUser = user;
+                await loadUserPlaylistsFromCloud();
+                await loadYoutubeSongsFromCloud();
+                updateProfileUI(currentUser);
+                document.getElementById('loginScreen').classList.remove('active');
+                document.getElementById('homeScreen').classList.add('active');
+                renderAll();
+                detectDevice();
 
-                            const cloudData = await loadUserFromCloud(currentUser.email);
-                            if (cloudData) {
-                                currentUser = cloudData;
-                                await saveSession(cloudData);
-                                updateProfileUI(currentUser);
-                            }
-                        }
-                    }
-                } catch(e) {
-                    console.error('[Adify] Background load error:', e);
+                const loader = document.getElementById('loadingOverlay');
+                if (loader) loader.classList.add('hidden');
+
+                setTimeout(() => {
+                    showPopup("WELCOME BACK, " + (currentUser.name || "USER").toUpperCase(), "success");
+                }, 500);
+
+                // Sync with cloud
+                const cloudData = await loadUserFromCloud(currentUser.email);
+                if (cloudData) {
+                    currentUser = cloudData;
+                    await saveSession(currentUser);
+                    updateProfileUI(currentUser);
                 }
+
                 setupBackButton();
-            }, 100);
+                return;
+            }
+
+            document.getElementById('homeScreen').classList.remove('active');
+            document.getElementById('loginScreen').classList.add('active');
+            renderAll();
+            detectDevice();
+
+            const loader = document.getElementById('loadingOverlay');
+            if (loader) loader.classList.add('hidden');
+
+            setupBackButton();
         };
     </script>
 </body>
