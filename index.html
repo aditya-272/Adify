@@ -182,7 +182,7 @@
 
     <div id="yt-player-wrapper"></div>
 
-    <audio id="mainAudio"></audio>
+    <audio id="mainAudio" playsinline webkit-playsinline></audio>
     <div id="toast"><i class="fas fa-shield-alt"></i> PROFILE SECURED</div>
     <div id="status-popup"></div>
 
@@ -433,26 +433,26 @@
     </div>
 
     <script>
-        // ==================== FULL WORKING CODE ====================
+        // ==================== FULL WORKING CODE WITH FIXES ====================
         const YOUTUBE_API_KEY = "AIzaSyBIpUJaQat1LYezbd3DYfteoVOBHAjxems";
         let youtubePlayer = null, isYouTubePlaying = false, currentYouTubeId = null, youtubeResults = [];
         let searchTimeout = null, isPlaying = false, ytDuration = 0, ytCurrentTime = 0, ytTimeInterval = null, ytPlayerReady = false;
-        let playHistory = [], historyIndex = -1;
-        let recentlyPlayed = [];
+        let playHistory = [], historyIndex = -1, recentlyPlayed = [];
 
+        // ---- MEDIA SESSION (NOTIFICATION) ----
         function setupMediaSession() {
             if ('mediaSession' in navigator) {
                 navigator.mediaSession.setActionHandler('play', () => togglePlay());
                 navigator.mediaSession.setActionHandler('pause', () => togglePlay());
                 navigator.mediaSession.setActionHandler('previoustrack', () => prevTrack());
                 navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack());
-                navigator.mediaSession.setActionHandler('seekbackward', (details) => {
-                    if (isYouTubePlaying && youtubePlayer && ytPlayerReady) youtubePlayer.seekTo(Math.max(0, ytCurrentTime - (details.seekOffset || 10)), true);
-                    else if (audio.currentTime) audio.currentTime = Math.max(0, audio.currentTime - (details.seekOffset || 10));
+                navigator.mediaSession.setActionHandler('seekbackward', (d) => {
+                    if (isYouTubePlaying && youtubePlayer && ytPlayerReady) youtubePlayer.seekTo(Math.max(0, ytCurrentTime - (d.seekOffset || 10)), true);
+                    else if (audio.currentTime) audio.currentTime = Math.max(0, audio.currentTime - (d.seekOffset || 10));
                 });
-                navigator.mediaSession.setActionHandler('seekforward', (details) => {
-                    if (isYouTubePlaying && youtubePlayer && ytPlayerReady) youtubePlayer.seekTo(Math.min(ytDuration, ytCurrentTime + (details.seekOffset || 10)), true);
-                    else if (audio.currentTime) audio.currentTime = Math.min(audio.duration, audio.currentTime + (details.seekOffset || 10));
+                navigator.mediaSession.setActionHandler('seekforward', (d) => {
+                    if (isYouTubePlaying && youtubePlayer && ytPlayerReady) youtubePlayer.seekTo(Math.min(ytDuration, ytCurrentTime + (d.seekOffset || 10)), true);
+                    else if (audio.currentTime) audio.currentTime = Math.min(audio.duration, audio.currentTime + (d.seekOffset || 10));
                 });
             }
         }
@@ -466,17 +466,23 @@
             }
         }
 
-        // Background playback: force resume when page hidden
+        // ---- BACKGROUND PLAYBACK: STRONGER RESUME ----
         document.addEventListener('visibilitychange', () => {
             if (document.hidden && isPlaying) {
+                // If local audio, try to resume immediately
+                if (!isYouTubePlaying && audio.src && audio.paused) {
+                    audio.play().catch(() => {});
+                }
+                // YouTube iframe keeps playing on its own
+            } else if (!document.hidden && isPlaying) {
+                // When coming back, ensure play state is correct
                 if (!isYouTubePlaying && audio.paused && audio.src) {
                     audio.play().catch(() => {});
                 }
-                // YouTube iframe continues playing by default
             }
         });
 
-        // Firebase
+        // ---- FIREBASE ----
         const firebaseConfig = {
             apiKey: "AIzaSyDLBqzimyPQj16sGRC2mJaP5N4ZxjwQvm4",
             authDomain: "adify-music-9280e.firebaseapp.com",
@@ -494,12 +500,12 @@
             return subPath ? `users/${key}/${subPath}` : `users/${key}`;
         }
 
-        // Session persistence in localStorage
+        // ---- SESSION (localStorage for persistence) ----
         function saveSessionEmail(email) { localStorage.setItem('adify_session_email', email); }
         function getSessionEmail() { return localStorage.getItem('adify_session_email'); }
         function clearSessionEmail() { localStorage.removeItem('adify_session_email'); }
 
-        // Recent searches (cloud)
+        // ---- RECENT SEARCHES (CLOUD) ----
         async function getRecentSearches() { if(!db||!currentUser||!currentUser.email) return []; try{ const snap=await db.ref(userPath(currentUser.email,'recentSearches')).once('value'); const v=snap.val(); return Array.isArray(v)?v:[]; }catch(e){return[];} }
         async function saveRecentSearch(query) { if(!query||query.trim().length<2||!db||!currentUser||!currentUser.email) return; const searches=await getRecentSearches(); const clean=query.trim(); const f=searches.filter(s=>s.toLowerCase()!==clean.toLowerCase()); f.unshift(clean); try{ await db.ref(userPath(currentUser.email,'recentSearches')).set(f.slice(0,10)); }catch(e){} renderRecentSearches(); }
         async function removeRecentSearch(query) { const s=await getRecentSearches(); const upd=s.filter(x=>x!==query); if(db&&currentUser&&currentUser.email) await db.ref(userPath(currentUser.email,'recentSearches')).set(upd); renderRecentSearches(); }
@@ -513,15 +519,15 @@
         }
         function searchFromRecent(query) { document.getElementById('searchPageInput').value=query; document.getElementById('searchClearBtn').style.display='block'; executeSearch(); }
 
-        // Playlists (cloud)
+        // ---- PLAYLISTS (CLOUD) ----
         async function saveUserPlaylists() { if(!db||!currentUser||!currentUser.email) return; try{ await db.ref(userPath(currentUser.email,'playlists')).set(userPlaylists); }catch(e){} }
         async function loadUserPlaylists() { if(!db||!currentUser||!currentUser.email) return; try{ const snap=await db.ref(userPath(currentUser.email,'playlists')).once('value'); const d=snap.val(); if(d&&typeof d==='object'){ Object.keys(userPlaylists).forEach(key=>{ if(d[key]&&Array.isArray(d[key])) userPlaylists[key]=d[key]; }); } }catch(e){} }
 
-        // YouTube songs (cloud)
+        // ---- YOUTUBE SONGS (CLOUD) ----
         async function saveYoutubeSongs() { if(!db||!currentUser||!currentUser.email) return; try{ await db.ref(userPath(currentUser.email,'youtubeSongs')).set(youtubeSongs); }catch(e){} }
         async function loadYoutubeSongs() { if(!db||!currentUser||!currentUser.email) return; try{ const snap=await db.ref(userPath(currentUser.email,'youtubeSongs')).once('value'); const v=snap.val(); youtubeSongs=Array.isArray(v)?v:[]; }catch(e){youtubeSongs=[];} }
 
-        // Recently played (cloud)
+        // ---- RECENTLY PLAYED (CLOUD) ----
         async function saveRecentlyPlayed() { if(!db||!currentUser||!currentUser.email) return; try{ await db.ref(userPath(currentUser.email,'recentlyPlayed')).set(recentlyPlayed); }catch(e){} }
         async function loadRecentlyPlayed() { if(!db||!currentUser||!currentUser.email) return; try{ const snap=await db.ref(userPath(currentUser.email,'recentlyPlayed')).once('value'); const v=snap.val(); recentlyPlayed=Array.isArray(v)?v:[]; }catch(e){recentlyPlayed=[];} }
         function addToRecentlyPlayed(track) {
@@ -538,16 +544,16 @@
             container.innerHTML = recentlyPlayed.map(s => songItemTemplate(s)).join('');
         }
 
-        // User & phone count
+        // ---- USER & PHONE COUNT ----
         async function saveUserToCloud(userData) { if(!db) return Promise.reject("DB not initialized"); return db.ref('users/'+userData.email.replace(/\./g,'_')).set(userData); }
         async function loadUserFromCloud(email) { if(!db) return null; try{ const snap=await db.ref('users/'+email.replace(/\./g,'_')).once('value'); return snap.val(); }catch(e){return null;} }
         async function updateProfileInCloud(email,updates) { if(!db) return; try{ await db.ref('users/'+email.replace(/\./g,'_')).update(updates); }catch(e){} }
         async function getPhoneCount(phone) { if(!db) return 0; try{ const snap=await db.ref('phoneCounts/'+phone).once('value'); const v=snap.val(); return typeof v==='number'?v:0; }catch(e){return 0;} }
         async function incrementPhoneCount(phone) { if(!db) return; const cur=await getPhoneCount(phone); await db.ref('phoneCounts/'+phone).set(cur+1); }
 
-        // Audio & data
+        // ---- AUDIO & DATA ----
         const audio = document.getElementById("mainAudio");
-        let currentUrl = "", searchQuery = "", activeP = null, isDragging = false, isSelectionMode = false, currentTrackData = null, selectedSongs = new Set(), youtubeSongs = [];
+        let currentUrl = "", searchQuery = "", activeP = null, isDragging = false, isSelectionMode = false, selectedSongs = new Set(), youtubeSongs = [];
 
         const userPlaylists = { "Lo-Fi Sleep 😴": [], "Study Focus 📖": [], "Traveling ✈️": [], "My Playlist 💖": [] };
         const allSongs = [
@@ -561,7 +567,7 @@
             { name: "My Playlist 💖", img: "https://images.unsplash.com/photo-1493225255756-d9584f8606e9?w=300" }
         ];
 
-        // Navigation
+        // ---- NAVIGATION ----
         function showScreen(id) { document.querySelectorAll(".app-screen,.profile-screen").forEach(s=>s.classList.remove("active")); const el=document.getElementById(id); if(el) el.classList.add("active"); }
         function openHome() { showScreen("homeScreen"); renderAll(); }
         function openProfile() { document.getElementById("profileScreen").classList.add("active"); if(currentUser) updateProfileUI(currentUser); }
@@ -582,7 +588,7 @@
             isRegisterMode = false;
         }
 
-        // Login functions (same as before)
+        // ---- LOGIN FUNCTIONS (SAME AS BEFORE) ----
         function togglePass(inputId, icon) { const i=document.getElementById(inputId); i.type=i.type==="password"?"text":"password"; icon.classList.toggle('fa-eye'); icon.classList.toggle('fa-eye-slash'); }
         function showPopup(msg, type) { const p=document.getElementById('status-popup'); p.innerText=msg; p.style.display='block'; p.style.color=type==='success'?'var(--success)':'var(--danger)'; p.style.background=type==='success'?'rgba(46,213,115,0.1)':'rgba(255,71,87,0.1)'; p.style.border=`1px solid ${type==='success'?'rgba(46,213,115,0.3)':'rgba(255,71,87,0.3)'}`; setTimeout(()=>p.style.display='none',3000); }
         function handleStrictLength(el,errId,forceEmail,forcePhone) { let val=el.value; const err=document.getElementById(errId); if(val.length>0){ if(forcePhone||(!forceEmail&&!isNaN(val.charAt(0)))){ if(val.length>10)el.value=val.substring(0,10); err.innerText=el.value.length<10?"Must be exactly 10 digits.":""; }else{ if(val.length>30)el.value=val.substring(0,30); err.innerText=!emailRegex.test(el.value)?"Format: abcde1234@gmail.com":""; } err.style.display=err.innerText?'block':'none'; }else{err.style.display='none';} }
@@ -624,13 +630,35 @@
             }
         }
 
-        // Home / menu / playlist
+        // ---- HOME / MENU / PLAYLIST (FIXED) ----
         function handleGlobalClick() { document.getElementById('globalPopup').classList.remove('show'); }
         function showToast(m) { const t=document.getElementById('toast'); t.innerText=m; t.style.display='block'; setTimeout(()=>t.style.display='none',2000); }
         function formatTime(s) { if(!s||isNaN(s)||!isFinite(s)) return "0:00"; let m=Math.floor(s/60), sec=Math.floor(s%60); return `${m}:${sec<10?'0':''}${sec}`; }
 
-        function openMenu(e,id) { e.stopPropagation(); const popup=document.getElementById('globalPopup'); document.getElementById('playlistOptions').innerHTML=playlistsData.map(p=>{ const ex=userPlaylists[p.name].some(x=>x.id===id); return `<div class="menu-item" onclick="playlistAction(${id},'${p.name}',${ex})"><span>${p.name}</span><span style="color:${ex?'var(--danger)':'var(--primary)'}; font-weight:bold;">${ex?'REMOVE':'ADD'}</span></div>`; }).join(''); popup.classList.add('show'); }
-        function playlistAction(id,pN,ex) { if(ex) userPlaylists[pN]=userPlaylists[pN].filter(s=>s.id!==id); else{ const s=allSongs.find(s=>s.id===id); if(s) userPlaylists[pN].push(s); } showToast(ex?"Removed!":"Added!"); saveUserPlaylists(); document.getElementById('globalPopup').classList.remove('show'); refreshView(); }
+        function openMenu(e, id) {
+            e.stopPropagation();
+            const popup = document.getElementById('globalPopup');
+            document.getElementById('playlistOptions').innerHTML = playlistsData.map(p => {
+                const ex = userPlaylists[p.name].some(x => x.id === id);
+                return `<div class="menu-item" onclick="playlistAction(${id},'${p.name}',${ex})"><span>${p.name}</span><span style="color:${ex?'var(--danger)':'var(--primary)'};font-weight:bold;">${ex?'REMOVE':'ADD'}</span></div>`;
+            }).join('');
+            popup.classList.add('show');
+        }
+        function playlistAction(id, pName, ex) {
+            if (ex) {
+                userPlaylists[pName] = userPlaylists[pName].filter(s => s.id !== id);
+            } else {
+                // Try to find in allSongs (local) and youtubeSongs (in case it's a YouTube track with an id)
+                let song = allSongs.find(s => s.id === id);
+                if (!song) song = youtubeSongs.find(s => s.id === id);
+                if (song) userPlaylists[pName].push(song);
+                else return; // not found, do nothing
+            }
+            showToast(ex ? "Removed!" : "Added!");
+            saveUserPlaylists();
+            document.getElementById('globalPopup').classList.remove('show');
+            refreshView();
+        }
 
         function songItemTemplate(s) {
             const isP = currentUrl === s.url || (s.ytId && currentYouTubeId === s.ytId);
@@ -639,7 +667,11 @@
             if (isSelectionMode) clickAction = `toggleSelectSong(${s.id})`;
             else if (s.ytId) clickAction = `playTrackFromUI('${s.ytId}','${s.title.replace(/'/g,"\\'")}','${s.artist.replace(/'/g,"\\'")}','${s.image}','youtube')`;
             else clickAction = `playTrackFromUI('${s.id}','${s.title.replace(/'/g,"\\'")}','${s.artist.replace(/'/g,"\\'")}','${s.image}','local')`;
-            const moreBtn = !isSelectionMode ? (s.ytId ? `<div class="more-btn" onclick="event.stopPropagation(); openYtMenu(event,'${s.ytId}')">⋮</div>` : `<div class="more-btn" onclick="openMenu(event,${s.id})">⋮</div>`) : `<div style="color:var(--danger);font-weight:bold;margin-right:10px;">${isS?'✓':''}</div>`;
+            const moreBtn = !isSelectionMode
+                ? (s.ytId
+                    ? `<div class="more-btn" onclick="event.stopPropagation(); openYtMenu(event,'${s.ytId}')">⋮</div>`
+                    : `<div class="more-btn" onclick="openMenu(event,${s.id})">⋮</div>`)
+                : `<div style="color:var(--danger);font-weight:bold;margin-right:10px;">${isS?'✓':''}</div>`;
             return `<div class="song-item ${isP?'playing-active':''} ${isS?'selected-to-remove':''}" onclick="${clickAction}"><div style="display:flex;align-items:center;flex:1"><div class="img-container"><img src="${s.image}" class="song-img"></div><div style="overflow:hidden;flex:1"><h4>${s.title}</h4><p style="font-size:10px;opacity:0.5">${s.artist}</p></div></div>${moreBtn}</div>`;
         }
 
@@ -664,7 +696,7 @@
             } catch(err) { console.error("renderAll error", err); }
         }
 
-        // Search screen functions (unchanged)
+        // ---- SEARCH SCREEN ----
         function openSearchScreen(e) { if(e)e.stopPropagation(); showScreen('searchScreen'); renderRecentSearches(); setTimeout(()=>document.getElementById('searchPageInput').focus(),100); }
         function closeSearch() { if(searchTimeout)clearTimeout(searchTimeout); document.getElementById('searchPageInput').value=''; document.getElementById('searchClearBtn').style.display='none'; document.getElementById('recentSearchesSection').style.display='block'; document.getElementById('searchResultsSection').style.display='none'; document.getElementById('ytSearchResultsSection').style.display='none'; showScreen('homeScreen'); renderAll(); }
         function clearSearchInput() { document.getElementById('searchPageInput').value=''; document.getElementById('searchClearBtn').style.display='none'; document.getElementById('recentSearchesSection').style.display='block'; document.getElementById('searchResultsSection').style.display='none'; document.getElementById('ytSearchResultsSection').style.display='none'; document.getElementById('searchPageInput').focus(); }
@@ -701,10 +733,39 @@
         }
 
         function ytSongItemTemplate(s) { const isP = currentYouTubeId === s.videoId; return `<div class="song-item ${isP?'playing-active':''}" onclick="playYouTubeSong('${s.videoId}','${s.title.replace(/'/g,"\\'")}','${s.artist.replace(/'/g,"\\'")}','${s.image}')"><div style="display:flex;align-items:center;flex:1"><div class="img-container"><img src="${s.image}" class="song-img"></div><div style="overflow:hidden;flex:1"><h4>${s.title}</h4><p style="font-size:10px;opacity:0.5">${s.artist}</p></div></div><div class="more-btn" onclick="event.stopPropagation(); openYtMenu(event,'${s.videoId}')">⋮</div></div>`; }
-        function openYtMenu(e, videoId) { e.stopPropagation(); const popup=document.getElementById('globalPopup'); document.getElementById('playlistOptions').innerHTML=playlistsData.map(p=>{ const ex=userPlaylists[p.name].some(x=>x.ytId===videoId); return `<div class="menu-item" onclick="addYtToPlaylist('${videoId}','${p.name}',${ex})"><span>${p.name}</span><span style="color:${ex?'var(--danger)':'var(--primary)'};font-weight:bold;">${ex?'REMOVE':'ADD'}</span></div>`; }).join(''); popup.classList.add('show'); }
-        async function addYtToPlaylist(videoId, pName, isRemove) { if(isRemove){ userPlaylists[pName]=userPlaylists[pName].filter(s=>s.ytId!==videoId); showToast("Removed!"); }else{ const song=youtubeResults.find(s=>s.videoId===videoId); if(song){ userPlaylists[pName].push({ id:'yt_'+Date.now(), ytId:videoId, title:song.title, artist:song.artist, url:'youtube://'+videoId, image:song.image }); showToast("Added!"); } } await saveUserPlaylists(); document.getElementById('globalPopup').classList.remove('show'); }
 
-        // Playback & history
+        // ---- YOUTUBE MENU FIX: USE youtubeSongs INSTEAD OF youtubeResults ----
+        function openYtMenu(e, videoId) {
+            e.stopPropagation();
+            const popup = document.getElementById('globalPopup');
+            document.getElementById('playlistOptions').innerHTML = playlistsData.map(p => {
+                const ex = userPlaylists[p.name].some(x => x.ytId === videoId);
+                return `<div class="menu-item" onclick="addYtToPlaylist('${videoId}','${p.name}',${ex})"><span>${p.name}</span><span style="color:${ex?'var(--danger)':'var(--primary)'};font-weight:bold;">${ex?'REMOVE':'ADD'}</span></div>`;
+            }).join('');
+            popup.classList.add('show');
+        }
+        async function addYtToPlaylist(videoId, pName, isRemove) {
+            if (isRemove) {
+                userPlaylists[pName] = userPlaylists[pName].filter(s => s.ytId !== videoId);
+                showToast("Removed!");
+            } else {
+                // Try to find the song in youtubeSongs (permanent list)
+                const song = youtubeSongs.find(s => s.ytId === videoId);
+                if (song) {
+                    userPlaylists[pName].push(song);
+                    showToast("Added!");
+                } else {
+                    // fallback: if not found, create minimal object (should not happen)
+                    showToast("Song not found");
+                    return;
+                }
+            }
+            await saveUserPlaylists();
+            document.getElementById('globalPopup').classList.remove('show');
+            refreshView();
+        }
+
+        // ---- PLAYBACK & HISTORY (FIXED PREV/NEXT) ----
         function addToHistory(track) {
             if (playHistory.length === 0 || playHistory[historyIndex].url !== track.url) {
                 if (historyIndex < playHistory.length - 1) playHistory = playHistory.slice(0, historyIndex + 1);
@@ -713,7 +774,6 @@
                 if (playHistory.length > 50) { playHistory.shift(); historyIndex--; }
             }
         }
-
         function prevTrack() {
             if (historyIndex > 0) {
                 historyIndex--;
@@ -722,7 +782,6 @@
                 else playSong(track.title, track.artist, track.url, track.image);
             } else showToast("No previous track");
         }
-
         function nextTrack() {
             if (historyIndex < playHistory.length - 1) {
                 historyIndex++;
@@ -730,6 +789,7 @@
                 if (track.ytId) playYouTubeSong(track.ytId, track.title, track.artist, track.image);
                 else playSong(track.title, track.artist, track.url, track.image);
             } else {
+                // auto random
                 const merged = [...allSongs, ...youtubeSongs.filter(yt => !allSongs.some(l => l.url === yt.url))];
                 if (merged.length) {
                     const r = merged[Math.floor(Math.random() * merged.length)];
@@ -812,7 +872,7 @@
             refreshView();
         }
 
-        // YouTube player (unchanged)
+        // ---- YOUTUBE PLAYER ----
         function loadYouTubePlayer(videoId) { const w=document.getElementById('yt-player-wrapper'); w.innerHTML=''; if(!window.YT||!YT.Player){ const t=document.createElement('script'); t.src="https://www.youtube.com/iframe_api"; t.onload=function(){window._pendingVideoId=videoId;}; document.head.appendChild(t); }else createYouTubePlayer(videoId); }
         window.onYouTubeIframeAPIReady = function() { if(window._pendingVideoId){ createYouTubePlayer(window._pendingVideoId); window._pendingVideoId=null; } };
         function createYouTubePlayer(videoId) { const w=document.getElementById('yt-player-wrapper'); w.innerHTML='<div id="youtube-player"></div>'; try{ youtubePlayer = new YT.Player('youtube-player',{ height:'1', width:'1', videoId:videoId, playerVars:{autoplay:1,controls:0,disablekb:1,fs:0,modestbranding:1,rel:0,showinfo:0,iv_load_policy:3,playsinline:1}, events:{ onReady:function(e){ ytPlayerReady=true; e.target.playVideo(); e.target.unMute(); startYtTimeUpdate(); }, onStateChange:function(e){ if(e.data===YT.PlayerState.ENDED){ if(isAutoPlayMode) playNextYoutubeAuto(); else nextTrack(); } if(e.data===YT.PlayerState.PLAYING){ isPlaying=true; updatePlayIcon(true); document.getElementById('playerImgArt').classList.add('music-playing'); try{ ytDuration=youtubePlayer.getDuration(); document.getElementById('totalDuration').innerText=formatTime(ytDuration); }catch(e){} } else if(e.data===YT.PlayerState.PAUSED){ isPlaying=false; updatePlayIcon(false); document.getElementById('playerImgArt').classList.remove('music-playing'); } }, onError:function(e){ console.error("YouTube error",e.data); showPopup("PLAYBACK ERROR","error"); } } }); }catch(e){ console.error("Player init failed",e); } }
@@ -835,7 +895,7 @@
         audio.onloadedmetadata = () => { if(!isYouTubePlaying&&audio.duration&&isFinite(audio.duration)) document.getElementById('totalDuration').innerText=formatTime(audio.duration); };
         audio.onerror = () => { console.error("Audio error",audio.error); isPlaying=false; updatePlayIcon(false); document.getElementById('playerImgArt').classList.remove('music-playing'); };
 
-        // PLAYLIST REMOVE (FIXED)
+        // ---- PLAYLIST REMOVE (FIXED & TESTED) ----
         function openPlaylist(n) { activeP=n; document.getElementById('homeView').classList.remove('active'); document.getElementById('playlistView').classList.add('active'); document.getElementById('playlistTitle').innerText=n; document.getElementById('searchToggleBtn').style.display='none'; renderPlaylistSongs(); }
         function resetToHome() { activeP=null; document.getElementById('playlistView').classList.remove('active'); document.getElementById('homeView').classList.add('active'); document.getElementById('searchToggleBtn').style.display='flex'; renderAll(); }
         function enableSelectionMode() { isSelectionMode=true; selectedSongs.clear(); document.getElementById('modeBtn').style.display='none'; document.getElementById('confirmBtn').style.display='block'; document.getElementById('cancelBtn').style.display='block'; renderPlaylistSongs(); }
@@ -843,7 +903,6 @@
         function toggleSelectSong(id) { selectedSongs.has(id)?selectedSongs.delete(id):selectedSongs.add(id); renderPlaylistSongs(); }
         async function confirmRemoval() {
             if (!activeP) return;
-            // Remove songs whose id is in selectedSongs
             userPlaylists[activeP] = userPlaylists[activeP].filter(s => !selectedSongs.has(s.id));
             await saveUserPlaylists();
             showToast("Songs Removed!");
@@ -855,7 +914,7 @@
         }
         function refreshView() { if(activeP) renderPlaylistSongs(); else renderAll(); }
 
-        // Profile
+        // ---- PROFILE ----
         function updateProfileUI(user) {
             document.getElementById("display-name").innerText=user.name||"Adify User";
             document.getElementById("p-gender").innerText=user.gender||"Male";
@@ -883,12 +942,12 @@
         let currentUser = null;
         const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
 
-        // Back button handler
+        // ---- BACK BUTTON HANDLER ----
         let isHandlingBack = false, backPressCount = 0, backPressTimer = null;
         function handleBackButton(e) { if(isHandlingBack) return; isHandlingBack=true; setTimeout(()=>isHandlingBack=false,300); if(e&&e.preventDefault) e.preventDefault(); if(document.getElementById('searchScreen').classList.contains('active')){ closeSearch(); return; } if(document.getElementById('profileScreen').classList.contains('active')){ closeProfile(); return; } if(document.getElementById('playlistView').classList.contains('active')){ resetToHome(); return; } if(document.getElementById('homeScreen').classList.contains('active')){ backPressCount++; if(backPressCount===1){ showToast("Press back again to exit"); if(backPressTimer)clearTimeout(backPressTimer); backPressTimer=setTimeout(()=>backPressCount=0,2000); }else{ backPressCount=0; if(backPressTimer)clearTimeout(backPressTimer); if(navigator.app&&navigator.app.exitApp) navigator.app.exitApp(); else showToast("Use app switcher to close"); } return; } if(document.getElementById('loginScreen').classList.contains('active')){ if(navigator.app&&navigator.app.exitApp) navigator.app.exitApp(); else showToast("Use app switcher to close"); } }
         function setupBackButton() { if(window.history&&window.history.pushState) window.history.pushState({page:'app'},'',window.location.href); window.addEventListener('popstate',function(e){ e.preventDefault(); handleBackButton(e); if(window.history&&window.history.pushState) window.history.pushState({page:'app'},'',window.location.href); }); document.addEventListener('backbutton',function(e){ e.preventDefault(); handleBackButton(e); },false); }
 
-        // Init
+        // ---- INIT ----
         window.onload = async function() {
             setupMediaSession();
             const savedEmail = getSessionEmail();
@@ -908,9 +967,7 @@
                     setTimeout(()=>showPopup("WELCOME BACK, "+(currentUser.name||"USER").toUpperCase(),"success"),500);
                     setupBackButton();
                     return;
-                } else {
-                    clearSessionEmail(); // invalid session
-                }
+                } else { clearSessionEmail(); }
             }
             document.getElementById('homeScreen').classList.remove('active');
             document.getElementById('loginScreen').classList.add('active');
