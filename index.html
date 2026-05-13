@@ -6,27 +6,46 @@
     <title>Adify - Premium Music Experience</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Syncopate:wght@700&family=Inter:wght@400;600&family=Poppins:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    
     <style>
         /* [Aapka purana CSS yahan rahega - Maine ise short rakha hai space ke liye] */
         :root { --sky-blue: #00BFFF; --bg-black: #020202; --primary: #0084ff; --danger: #ff4757; }
         body { background: radial-gradient(circle at top right, #001f3f, #000814); color: white; font-family: "Inter", sans-serif; margin: 0; height: 100vh; overflow: hidden; }
         .app-screen { position: fixed; inset: 0; display: none; flex-direction: column; overflow-y: auto; background: inherit; }
         .app-screen.active { display: flex; }
-        /* ... Baki saara CSS jo aapke file mein tha wo yahan continue hoga ... */
+        #loadingOverlay { position: fixed; inset: 0; background: #000; z-index: 99999; display: flex; align-items: center; justify-content: center; flex-direction: column; }
+        #loadingOverlay.hidden { display: none; }
+        .loading-spinner { width: 40px; height: 40px; border: 3px solid rgba(0, 191, 255, 0.2); border-top-color: var(--sky-blue); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin{to{transform:rotate(360deg)}}
     </style>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 </head>
 <body>
 
     <div id="loadingOverlay">
         <div class="loading-spinner"></div>
-        <div class="loading-text">SYNCING WITH CLOUD...</div>
+        <div style="color:var(--sky-blue); margin-top:15px; letter-spacing:2px;">SYNCING CLOUD...</div>
+    </div>
+
+    <div id="loginScreen" class="app-screen active">
+        <div style="margin: auto; text-align: center; width: 300px;">
+            <h1 style="color: var(--sky-blue);">Adify</h1>
+            <input type="email" id="login-id" placeholder="Enter Email" style="width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 10px; background: #111; color: #fff; border: 1px solid #333;">
+            <button onclick="handleSubmit()" style="width: 100%; padding: 12px; background: var(--sky-blue); border: none; border-radius: 10px; font-weight: bold; cursor: pointer;">GET STARTED</button>
+        </div>
+    </div>
+
+    <div id="homeScreen" class="app-screen">
+        <div style="padding: 20px;">
+            <h2 id="welcomeText">Welcome Back</h2>
+            <div id="mainPlaylistGrid"></div>
+            <button onclick="doLogout()" style="margin-top: 50px; color: red; background: none; border: 1px solid red; padding: 10px; border-radius: 10px; cursor: pointer;">LOGOUT</button>
+        </div>
     </div>
 
     <script>
-        // ===== 1. CONFIGURATION =====
-        const YOUTUBE_API_KEY = "AIzaSyBIpUJaQat1LYezbd3DYfteoVOBHAjxems";
+        // 1. FIREBASE CONFIGURATION
         const firebaseConfig = {
             databaseURL: "https://adify-4999f-default-rtdb.firebaseio.com/"
         };
@@ -34,136 +53,82 @@
         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // State Variables
         let currentUser = null;
         let userPlaylists = {};
         let recentSearches = [];
-        let currentTrackIndex = 0;
-        let isPlaying = false;
 
-        // ===== 2. CORE CLOUD SYNC LOGIC (NO LOCAL STORAGE) =====
-
-        // Cloud se data fetch karna
-        async function syncFromCloud(email) {
-            const userId = email.replace(/[.$#[\]]/g, "_");
-            const snapshot = await db.ref('users/' + userId).once('value');
-            const data = snapshot.val();
-            
-            if (data) {
-                userPlaylists = data.playlists || {};
-                recentSearches = data.searchHistory || [];
-                currentUser = data.profile || currentUser;
-                
-                // UI Update
-                renderAll();
-                renderRecentSearches();
-                if (typeof updateProfileUI === "function") updateProfileUI(currentUser);
-                return true;
-            }
-            return false;
+        // 2. CORE SYNC LOGIC
+        function getSafeId(email) {
+            return email ? email.replace(/[.$#[\]]/g, "_") : null;
         }
 
-        // Data cloud par save karna
-        function syncToCloud() {
-            if (!currentUser || !currentUser.email) return;
-            const userId = currentUser.email.replace(/[.$#[\]]/g, "_");
-            
+        async function syncFromCloud(email) {
+            const userId = getSafeId(email);
+            try {
+                const snapshot = await db.ref('users/' + userId).once('value');
+                const data = snapshot.val();
+                if (data) {
+                    userPlaylists = data.playlists || {};
+                    recentSearches = data.searchHistory || [];
+                    currentUser = data.profile || currentUser;
+                    console.log("Cloud Data Synced Successfully");
+                }
+            } catch (e) {
+                console.error("Cloud Fetch Error:", e);
+            }
+        }
+
+        function saveToCloud() {
+            if (!currentUser) return;
+            const userId = getSafeId(currentUser.email);
             db.ref('users/' + userId).update({
                 profile: currentUser,
                 playlists: userPlaylists,
                 searchHistory: recentSearches,
-                lastSync: Date.now()
-            }).then(() => console.log("Cloud Synced")).catch(e => console.error("Sync Error", e));
+                lastSeen: Date.now()
+            });
         }
 
-        // ===== 3. UPDATED HANDLERS (Firebase Integrated) =====
-
-        function addToRecentSearches(query) {
-            if (!query) return;
-            recentSearches = recentSearches.filter(s => s !== query);
-            recentSearches.unshift(query);
-            if (recentSearches.length > 10) recentSearches.pop();
-            renderRecentSearches();
-            syncToCloud(); // Save to Cloud
-        }
-
-        function clearAllRecentSearches() {
-            recentSearches = [];
-            renderRecentSearches();
-            syncToCloud(); // Save to Cloud
-        }
-
-        function addToPlaylist(playlistName, song) {
-            if (!userPlaylists[playlistName]) userPlaylists[playlistName] = [];
-            const exists = userPlaylists[playlistName].some(s => s.id === song.id);
-            if (!exists) {
-                userPlaylists[playlistName].push(song);
-                showPopup(`Added to ${playlistName}`, "success");
-                syncToCloud(); // Save to Cloud
-            } else {
-                showPopup("Already in playlist", "info");
-            }
-        }
-
-        function confirmRemoval() {
-            const playlistName = document.getElementById('playlistTitle').innerText;
-            if (selectedSongsToRemove.size > 0 && userPlaylists[playlistName]) {
-                userPlaylists[playlistName] = userPlaylists[playlistName].filter(song => !selectedSongsToRemove.has(song.id));
-                disableSelectionMode();
-                openPlaylist(playlistName);
-                syncToCloud(); // Save to Cloud
-                showPopup("Playlist Updated", "success");
-            }
-        }
-
-        // ===== 4. AUTH & SESSION MANAGEMENT =====
-
+        // 3. AUTH HANDLERS
         async function handleSubmit() {
-            // ... Signup/Login logic ...
-            const emailInput = document.getElementById('reg-email')?.value || document.getElementById('login-id').value;
-            currentUser = { email: emailInput, name: document.getElementById('full-name')?.value || "User" };
+            const emailInput = document.getElementById('login-id').value;
+            if (!emailInput || !emailInput.includes('@')) return alert("Enter valid email");
+
+            showLoader();
+            currentUser = { email: emailInput, name: "User" };
             
-            // Session sirf login status ke liye (Security check)
+            // Session Backup
             localStorage.setItem('adify_session', JSON.stringify(currentUser));
             
-            await syncFromCloud(currentUser.email);
+            await syncFromCloud(emailInput);
             
             document.getElementById('loginScreen').classList.remove('active');
             document.getElementById('homeScreen').classList.add('active');
+            document.getElementById('welcomeText').innerText = "Hello, " + emailInput;
+            hideLoader();
         }
 
-        window.onload = function() {
+        // 4. APP LIFECYCLE
+        function showLoader() { document.getElementById('loadingOverlay').classList.remove('hidden'); }
+        function hideLoader() { document.getElementById('loadingOverlay').classList.add('hidden'); }
+
+        window.onload = async function() {
             const session = localStorage.getItem('adify_session');
             if (session) {
                 currentUser = JSON.parse(session);
-                syncFromCloud(currentUser.email).then(() => {
-                    document.getElementById('loginScreen').classList.remove('active');
-                    document.getElementById('homeScreen').classList.add('active');
-                    hideLoader();
-                });
-            } else {
-                document.getElementById('loginScreen').classList.add('active');
-                hideLoader();
+                await syncFromCloud(currentUser.email);
+                document.getElementById('loginScreen').classList.remove('active');
+                document.getElementById('homeScreen').classList.add('active');
+                document.getElementById('welcomeText').innerText = "Hello, " + currentUser.email;
             }
-            if (typeof loadYoutubeSongs === "function") loadYoutubeSongs();
+            // Always hide loader at the end
+            hideLoader();
         };
-
-        function hideLoader() {
-            const loader = document.getElementById('loadingOverlay');
-            if (loader) loader.classList.add('hidden');
-        }
-
-        function showLogout() {
-            document.getElementById('logout-modal').style.display = 'flex';
-        }
 
         function doLogout() {
             localStorage.removeItem('adify_session');
             location.reload();
         }
-
-        // ... [Baki saare Player aur UI functions jo adify.html mein the yahan aayenge] ...
-
     </script>
 </body>
 </html>
