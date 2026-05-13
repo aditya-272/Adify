@@ -136,7 +136,6 @@
         .profile-btn { width: 35px; height: 35px; background: var(--glass); border: 1px solid var(--border); border-radius: 50%; overflow: hidden; cursor: pointer; }
         .profile-btn img { width: 100%; height: 100%; object-fit: cover; }
 
-        /* ===== SEARCH SCREEN STYLES ===== */
         .search-header{padding:20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)}
         .search-back-btn{width:40px;height:40px;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;border-radius:50%;cursor:pointer;flex-shrink:0}
         .search-back-btn:active{background:rgba(0,191,255,0.2)}
@@ -468,7 +467,7 @@
         <div class="watermark">Made by Aditya</div>
     </div>
 
-    <!-- SEARCH SCREEN - NEW DEDICATED PAGE -->
+    <!-- SEARCH SCREEN -->
     <div id="searchScreen" class="app-screen">
         <div class="search-header">
             <div class="search-back-btn" onclick="closeSearch()">
@@ -481,7 +480,6 @@
         </div>
 
         <div class="search-content" id="searchContent">
-            <!-- Recent Searches Section -->
             <div id="recentSearchesSection">
                 <div class="recent-searches-header">
                     <span class="recent-searches-title">Recent Searches</span>
@@ -490,7 +488,6 @@
                 <div id="recentSearchesList"></div>
             </div>
 
-            <!-- Search Results Section -->
             <div id="searchResultsSection" style="display:none;">
                 <p class="section-title">Tracks</p>
                 <div id="searchResultsTracks"></div>
@@ -577,6 +574,7 @@
             <i class="fas fa-headset"></i>
         </div>
     </div>
+
     <script>
 
         // ===== YOUTUBE API CONFIG =====
@@ -594,21 +592,286 @@
         let ytTimeInterval = null;
         let ytPlayerReady = false;
 
-        // ===== MEDIA SESSION API - Background Playback =====
+        // ===== FIREBASE CONFIG =====
+        const firebaseConfig = {
+            apiKey: "AIzaSyDLBqzimyPQj16sGRC2mJaP5N4ZxjwQvm4",
+            authDomain: "adify-music-9280e.firebaseapp.com",
+            databaseURL: "https://adify-music-9280e-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "adify-music-9280e",
+            storageBucket: "adify-music-9280e.firebasestorage.app",
+            messagingSenderId: "534415071027",
+            appId: "1:534415071027:web:255cb8f8869d87459a5046"
+        };
+
+        let db = null;
+        let firebaseInitialized = false;
+
+        try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+            firebaseInitialized = true;
+            console.log("[Adify] Firebase connected!");
+        } catch(e) {
+            console.error("[Adify] Firebase init error:", e);
+        }
+
+        // ===== FIREBASE HELPER FUNCTIONS =====
+        function getUserKey() {
+            if (currentUser && currentUser.email) {
+                return currentUser.email.replace(/\./g, '_');
+            }
+            return 'default';
+        }
+
+        function saveToFirebase(path, data) {
+            if (!db) return Promise.reject("Firebase not initialized");
+            return db.ref(path).set(data);
+        }
+
+        function getFromFirebase(path) {
+            if (!db) return Promise.resolve(null);
+            return db.ref(path).once('value').then(snap => snap.val()).catch(err => {
+                console.error("[Adify] Firebase read error:", err);
+                return null;
+            });
+        }
+
+        function updateFirebase(path, data) {
+            if (!db) return Promise.reject("Firebase not initialized");
+            return db.ref(path).update(data);
+        }
+
+        function removeFromFirebase(path) {
+            if (!db) return Promise.reject("Firebase not initialized");
+            return db.ref(path).remove();
+        }
+
+        // ===== RECENT SEARCHES - FIREBASE =====
+        async function getRecentSearches() {
+            if (!currentUser || !db) return [];
+            try {
+                const data = await getFromFirebase('users/' + getUserKey() + '/recentSearches');
+                return data || [];
+            } catch(e) { return []; }
+        }
+
+        async function saveRecentSearch(query) {
+            if (!query || query.trim().length < 2 || !currentUser || !db) return;
+            const cleanQuery = query.trim();
+            const searches = await getRecentSearches();
+            const filtered = searches.filter(s => s.toLowerCase() !== cleanQuery.toLowerCase());
+            filtered.unshift(cleanQuery);
+            const limited = filtered.slice(0, 10);
+            try {
+                await saveToFirebase('users/' + getUserKey() + '/recentSearches', limited);
+            } catch(e) {}
+            renderRecentSearches();
+        }
+
+        async function removeRecentSearch(query) {
+            if (!currentUser || !db) return;
+            const searches = await getRecentSearches();
+            const filtered = searches.filter(s => s !== query);
+            try {
+                await saveToFirebase('users/' + getUserKey() + '/recentSearches', filtered);
+            } catch(e) {}
+            renderRecentSearches();
+        }
+
+        async function clearAllRecentSearches() {
+            if (!currentUser || !db) return;
+            try {
+                await removeFromFirebase('users/' + getUserKey() + '/recentSearches');
+            } catch(e) {}
+            renderRecentSearches();
+        }
+
+        async function renderRecentSearches() {
+            const list = document.getElementById('recentSearchesList');
+            const searches = await getRecentSearches();
+            if (searches.length === 0) {
+                list.innerHTML = '<div class="no-recent">No recent searches</div>';
+                return;
+            }
+            let html = '';
+            searches.forEach(q => {
+                html += '<div class="recent-search-item" onclick="searchFromRecent(' + "'" + q.replace(/'/g, "\'") + "'" + ')"><div class="recent-search-left"><i class="fas fa-clock recent-search-icon"></i><span class="recent-search-text">' + q + '</span></div><i class="fas fa-times recent-search-delete" onclick="event.stopPropagation(); removeRecentSearch(' + "'" + q.replace(/'/g, "\'") + "'" + ')"></i></div>';
+            });
+            list.innerHTML = html;
+        }
+
+        function searchFromRecent(query) {
+            document.getElementById('searchPageInput').value = query;
+            document.getElementById('searchClearBtn').style.display = 'block';
+            executeSearch();
+        }
+
+        // ===== PLAYLIST PERSISTENCE - FIREBASE =====
+        async function saveUserPlaylists() {
+            if (!currentUser || !db) return;
+            try {
+                await saveToFirebase('users/' + getUserKey() + '/playlists', userPlaylists);
+                console.log("[Adify] Playlists saved to Firebase");
+            } catch(e) {
+                console.error("[Adify] Failed to save playlists:", e);
+            }
+        }
+
+        async function loadUserPlaylists() {
+            if (!currentUser || !db) return;
+            try {
+                const data = await getFromFirebase('users/' + getUserKey() + '/playlists');
+                if (data) {
+                    Object.keys(userPlaylists).forEach(pName => {
+                        if (data[pName] && Array.isArray(data[pName])) {
+                            userPlaylists[pName] = data[pName];
+                        }
+                    });
+                }
+            } catch(e) {
+                console.error("[Adify] Failed to load playlists:", e);
+            }
+        }
+
+        // ===== YOUTUBE SONGS - FIREBASE =====
+        async function saveYoutubeSongs() {
+            if (!currentUser || !db) return;
+            try {
+                await saveToFirebase('users/' + getUserKey() + '/youtubeSongs', youtubeSongs);
+            } catch(e) {}
+        }
+
+        async function loadYoutubeSongs() {
+            if (!currentUser || !db) { youtubeSongs = []; return; }
+            try {
+                const data = await getFromFirebase('users/' + getUserKey() + '/youtubeSongs');
+                youtubeSongs = data || [];
+            } catch(e) { youtubeSongs = []; }
+        }
+
+        // ===== SESSION - FIREBASE ONLY =====
+        async function saveSession(userData) {
+            if (!db) return;
+            try {
+                await saveToFirebase('users/' + userData.email.replace(/\./g, '_') + '/profile', userData);
+                await saveToFirebase('users/' + userData.email.replace(/\./g, '_') + '/lastActive', Date.now());
+            } catch(e) {
+                console.error("[Adify] Session save error:", e);
+            }
+        }
+
+        async function getSession() {
+            if (!db) return null;
+            try {
+                // Add timeout to prevent hanging
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Firebase timeout')), 5000)
+                );
+                const snap = await Promise.race([
+                    db.ref('users').once('value'),
+                    timeoutPromise
+                ]);
+                const users = snap.val();
+                if (!users) return null;
+
+                let latestUser = null;
+                let latestTime = 0;
+
+                for (let key in users) {
+                    if (users[key] && users[key].lastActive && users[key].profile) {
+                        if (users[key].lastActive > latestTime) {
+                            latestTime = users[key].lastActive;
+                            latestUser = users[key].profile;
+                        }
+                    }
+                }
+                return latestUser;
+            } catch(e) {
+                console.error("[Adify] Session get error:", e);
+                return null;
+            }
+        }
+
+        // ===== USER AUTH - FIREBASE =====
+        async function saveUserToCloud(userData) {
+            if (!db) return Promise.reject("DB not initialized");
+            return saveToFirebase('users/' + userData.email.replace(/\./g, '_') + '/profile', userData);
+        }
+
+        async function loadUserFromCloud(email) {
+            if (!db) return null;
+            return getFromFirebase('users/' + email.replace(/\./g, '_') + '/profile');
+        }
+
+        async function updateProfileInCloud(email, updates) {
+            if (!db) return;
+            return updateFirebase('users/' + email.replace(/\./g, '_') + '/profile', updates);
+        }
+
+        async function checkEmailExists(email) {
+            if (!db) return false;
+            try {
+                const data = await getFromFirebase('users/' + email.replace(/\./g, '_') + '/profile');
+                return data !== null;
+            } catch(e) { return false; }
+        }
+
+        async function checkPhoneCount(phone) {
+            if (!db) return 0;
+            try {
+                const snap = await db.ref('users').once('value');
+                const users = snap.val();
+                if (!users) return 0;
+                let count = 0;
+                for (let key in users) {
+                    if (users[key] && users[key].profile && users[key].profile.phone === phone) {
+                        count++;
+                    }
+                }
+                return count;
+            } catch(e) { return 0; }
+        }
+
+        // ===== CROSS-DEVICE LOGIN - FIREBASE ONLY =====
+        async function findUserFirebase(lid) {
+            if (!db) return null;
+            try {
+                if (lid.includes('@')) {
+                    const data = await getFromFirebase('users/' + lid.replace(/\./g, '_') + '/profile');
+                    return data;
+                } else {
+                    const snap = await db.ref('users').once('value');
+                    const users = snap.val();
+                    if (!users) return null;
+                    for (let key in users) {
+                        if (users[key] && users[key].profile && users[key].profile.phone === lid) {
+                            return users[key].profile;
+                        }
+                    }
+                    return null;
+                }
+            } catch(e) {
+                console.error("[Adify] Find user error:", e);
+                return null;
+            }
+        }
+
+        async function tryFirebaseLogin(lid, lpass) {
+            const user = await findUserFirebase(lid);
+            if (!user) return null;
+            if (user.password === lpass) {
+                return user;
+            }
+            return { error: "WRONG PASSWORD" };
+        }
+
+        // ===== MEDIA SESSION API =====
         function setupMediaSession() {
             if ('mediaSession' in navigator) {
-                navigator.mediaSession.setActionHandler('play', function() {
-                    togglePlay();
-                });
-                navigator.mediaSession.setActionHandler('pause', function() {
-                    togglePlay();
-                });
-                navigator.mediaSession.setActionHandler('previoustrack', function() {
-                    prevTrack();
-                });
-                navigator.mediaSession.setActionHandler('nexttrack', function() {
-                    nextTrack();
-                });
+                navigator.mediaSession.setActionHandler('play', function() { togglePlay(); });
+                navigator.mediaSession.setActionHandler('pause', function() { togglePlay(); });
+                navigator.mediaSession.setActionHandler('previoustrack', function() { prevTrack(); });
+                navigator.mediaSession.setActionHandler('nexttrack', function() { nextTrack(); });
                 navigator.mediaSession.setActionHandler('seekbackward', function(details) {
                     if (isYouTubePlaying && youtubePlayer && ytPlayerReady) {
                         const skipTime = details.seekOffset || 10;
@@ -642,91 +905,15 @@
             }
         }
 
-        // ===== PAGE VISIBILITY - Keep Playing in Background =====
-        document.addEventListener('visibilitychange', function() {
-            if (document.hidden) {
-                // Page is hidden (background) - keep playing
-                console.log('[Adify] App in background, continuing playback');
-                if (!isPlaying && audio.src) {
-                    // Optional: auto-resume if paused
-                }
-            } else {
-                // Page visible again
-                console.log('[Adify] App in foreground');
-            }
-        });
-
-        // ===== RECENT SEARCHES =====
-        function getRecentSearchesKey() {
-            return 'adify_recent_searches_' + (currentUser ? currentUser.email.replace(/\./g, '_') : 'default');
-        }
-
-        function getRecentSearches() {
-            try {
-                const saved = localStorage.getItem(getRecentSearchesKey());
-                return saved ? JSON.parse(saved) : [];
-            } catch(e) { return []; }
-        }
-
-        function saveRecentSearch(query) {
-            if (!query || query.trim().length < 2) return;
-            const searches = getRecentSearches();
-            const cleanQuery = query.trim();
-            const filtered = searches.filter(s => s.toLowerCase() !== cleanQuery.toLowerCase());
-            filtered.unshift(cleanQuery);
-            const limited = filtered.slice(0, 10);
-            try {
-                localStorage.setItem(getRecentSearchesKey(), JSON.stringify(limited));
-            } catch(e) {}
-            renderRecentSearches();
-        }
-
-        function removeRecentSearch(query) {
-            const searches = getRecentSearches().filter(s => s !== query);
-            try {
-                localStorage.setItem(getRecentSearchesKey(), JSON.stringify(searches));
-            } catch(e) {}
-            renderRecentSearches();
-        }
-
-        function clearAllRecentSearches() {
-            try {
-                localStorage.removeItem(getRecentSearchesKey());
-            } catch(e) {}
-            renderRecentSearches();
-        }
-
-        function renderRecentSearches() {
-            const list = document.getElementById('recentSearchesList');
-            const searches = getRecentSearches();
-            if (searches.length === 0) {
-                list.innerHTML = '<div class="no-recent">No recent searches</div>';
-                return;
-            }
-            let html = '';
-            searches.forEach(q => {
-                html += '<div class="recent-search-item" onclick="searchFromRecent(' + "'" + q.replace(/'/g, "\'") + "')" + '"><div class="recent-search-left"><i class="fas fa-clock recent-search-icon"></i><span class="recent-search-text">' + q + '</span></div><i class="fas fa-times recent-search-delete" onclick="event.stopPropagation(); removeRecentSearch(' + "'" + q.replace(/'/g, "\'") + "')" + '"></i></div>';
-            });
-            list.innerHTML = html;
-        }
-
-        function searchFromRecent(query) {
-            document.getElementById('searchPageInput').value = query;
-            document.getElementById('searchClearBtn').style.display = 'block';
-            executeSearch();
-        }
-
         // ===== SEARCH SCREEN FUNCTIONS =====
         function openSearchScreen(e) {
             if (e) e.stopPropagation();
             showScreen('searchScreen');
             renderRecentSearches();
-            setTimeout(() => {
-                document.getElementById('searchPageInput').focus();
-            }, 100);
+            setTimeout(() => { document.getElementById('searchPageInput').focus(); }, 100);
         }
 
-        function closeSearch() {
+        async function closeSearch() {
             if (searchTimeout) clearTimeout(searchTimeout);
             document.getElementById('searchPageInput').value = '';
             document.getElementById('searchClearBtn').style.display = 'none';
@@ -759,15 +946,13 @@
                 return;
             }
             if (searchTimeout) clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => {
-                executeSearch();
-            }, 800);
+            searchTimeout = setTimeout(() => { executeSearch(); }, 800);
         }
 
         async function executeSearch() {
             const query = document.getElementById('searchPageInput').value.trim();
             if (!query || query.length < 2) return;
-            saveRecentSearch(query);
+            await saveRecentSearch(query);
             document.getElementById('recentSearchesSection').style.display = 'none';
             document.getElementById('searchResultsSection').style.display = 'block';
 
@@ -827,7 +1012,7 @@
                         });
                     }
                 });
-                saveYoutubeSongs();
+                await saveYoutubeSongs();
 
                 let html = '';
                 youtubeResults.forEach((song) => {
@@ -841,43 +1026,9 @@
             }
         }
 
-        // ===== PLAYLIST PERSISTENCE =====
-        function getPlaylistStorageKey() {
-            if (currentUser && currentUser.email) {
-                return 'adify_playlists_' + currentUser.email.replace(/\./g, '_');
-            }
-            return 'adify_playlists_default';
-        }
-
-        function saveUserPlaylists() {
-            const key = getPlaylistStorageKey();
-            try {
-                localStorage.setItem(key, JSON.stringify(userPlaylists));
-            } catch(e) {
-                console.error("[Adify] Failed to save playlists:", e);
-            }
-        }
-
-        function loadUserPlaylists() {
-            const key = getPlaylistStorageKey();
-            try {
-                const saved = localStorage.getItem(key);
-                if (saved) {
-                    const parsed = JSON.parse(saved);
-                    Object.keys(userPlaylists).forEach(pName => {
-                        if (parsed[pName] && Array.isArray(parsed[pName])) {
-                            userPlaylists[pName] = parsed[pName];
-                        }
-                    });
-                }
-            } catch(e) {
-                console.error("[Adify] Failed to load playlists:", e);
-            }
-        }
-
         function ytSongItemTemplate(s) {
             const isP = currentYouTubeId === s.videoId;
-            return '<div class="song-item ' + (isP ? 'playing-active' : '') + '" onclick="playYouTubeSong(' + "'" + s.videoId + "', '" + s.title.replace(/'/g, "\'") + "', '" + s.artist.replace(/'/g, "\'") + "', '" + s.image + "')" + '"><div style="display:flex; align-items:center; flex:1"><div class="img-container"><img src="' + s.image + '" class="song-img"></div><div style="overflow:hidden; flex:1"><h4>' + s.title + '</h4><p style="font-size:10px; opacity:0.5">' + s.artist + '</p></div></div><div class="more-btn" onclick="event.stopPropagation(); openYtMenu(event, ' + "'" + s.videoId + "')" + '">⋮</div></div>';
+            return '<div class="song-item ' + (isP ? 'playing-active' : '') + '" onclick="playYouTubeSong(' + "'" + s.videoId + "'" + ', ' + "'" + s.title.replace(/'/g, "\'") + "'" + ', ' + "'" + s.artist.replace(/'/g, "\'") + "'" + ', ' + "'" + s.image + "'" + ')"><div style="display:flex; align-items:center; flex:1"><div class="img-container"><img src="' + s.image + '" class="song-img"></div><div style="overflow:hidden; flex:1"><h4>' + s.title + '</h4><p style="font-size:10px; opacity:0.5">' + s.artist + '</p></div></div><div class="more-btn" onclick="event.stopPropagation(); openYtMenu(event, ' + "'" + s.videoId + "'" + ')">⋮</div></div>';
         }
 
         function openYtMenu(e, videoId) {
@@ -885,12 +1036,12 @@
             const popup = document.getElementById('globalPopup');
             document.getElementById('playlistOptions').innerHTML = playlistsData.map(p => {
                 const ex = userPlaylists[p.name].some(x => x.ytId === videoId);
-                return '<div class="menu-item" onclick="addYtToPlaylist(' + "'" + videoId + "', '" + p.name + "', " + ex + ')"><span>' + p.name + '</span><span style="color:' + (ex ? 'var(--danger)' : 'var(--primary)') + '; font-weight:bold;">' + (ex ? 'REMOVE' : 'ADD') + '</span></div>';
+                return '<div class="menu-item" onclick="addYtToPlaylist(' + "'" + videoId + "'" + ', ' + "'" + p.name + "'" + ', ' + ex + ')"><span>' + p.name + '</span><span style="color:' + (ex ? 'var(--danger)' : 'var(--primary)') + '; font-weight:bold;">' + (ex ? 'REMOVE' : 'ADD') + '</span></div>';
             }).join('');
             popup.classList.add('show');
         }
 
-        function addYtToPlaylist(videoId, pName, isRemove) {
+        async function addYtToPlaylist(videoId, pName, isRemove) {
             if (isRemove) {
                 userPlaylists[pName] = userPlaylists[pName].filter(s => s.ytId !== videoId);
                 showToast("Removed!");
@@ -908,7 +1059,7 @@
                     showToast("Added!");
                 }
             }
-            saveUserPlaylists();
+            await saveUserPlaylists();
             document.getElementById('globalPopup').classList.remove('show');
         }
 
@@ -936,7 +1087,6 @@
             isAutoPlayMode = true;
             startYoutubeAutoPlay(videoId);
 
-            // Update Media Session for background playback
             updateMediaSessionMetadata(title, channel, thumbUrl);
 
             showPopup("▶ PLAYING", "success");
@@ -1110,7 +1260,6 @@
             document.getElementById('totalDuration').innerText = "0:00";
             document.getElementById('fill').style.width = '0%';
             document.getElementById('seekSlider').value = 0;
-            // Clear media session
             if ('mediaSession' in navigator) {
                 navigator.mediaSession.metadata = null;
                 navigator.mediaSession.playbackState = 'none';
@@ -1125,121 +1274,6 @@
                 icon.innerHTML = '<path d="M8 5v14l11-7z"/>';
             }
         }
-
-        // ===== SESSION BACKUP =====
-        function saveSession(userData) {
-            const data = JSON.stringify(userData);
-            localStorage.setItem('adify_current_session', data);
-            sessionStorage.setItem('adify_backup_session', data);
-            localStorage.setItem(userData.email, data);
-        }
-
-        function getSession() {
-            let session = localStorage.getItem('adify_current_session');
-            if (session) {
-                try {
-                    const user = JSON.parse(session);
-                    if (user && user.email) return user;
-                } catch(e) {}
-            }
-            session = sessionStorage.getItem('adify_backup_session');
-            if (session) {
-                try {
-                    const user = JSON.parse(session);
-                    if (user && user.email) {
-                        localStorage.setItem('adify_current_session', session);
-                        return user;
-                    }
-                } catch(e) {}
-            }
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && key.includes('@')) {
-                    try {
-                        const data = JSON.parse(localStorage.getItem(key));
-                        if (data && data.email) {
-                            saveSession(data);
-                            return data;
-                        }
-                    } catch(e) {}
-                }
-            }
-            return null;
-        }
-
-        function updateProfileUI(user) {
-            document.getElementById("display-name").innerText = user.name || "Adify User";
-            document.getElementById("p-gender").innerText = user.gender || "Male";
-            document.getElementById("p-email").innerText = user.email || "user@adify.com";
-            document.getElementById("p-phone").innerText = user.phone ? "+91 " + user.phone : "+91 98765 43210";
-            document.getElementById("p-age").innerText = (user.age || 22) + " Years";
-            const pfp = user.photo || "https://api.dicebear.com/7.x/avataaars/svg?seed=" + (user.name || "User");
-            document.getElementById('main-pfp').src = pfp;
-            document.getElementById('homeProfileImg').src = pfp;
-        }
-
-        let isRegisterMode = false;
-        let selectedGender = "Male";
-        let currentPhoto = null;
-        let selectedGenderProfile = "Male";
-        let currentUser = null;
-        const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
-
-        // ===== FIREBASE CONFIG =====
-        const firebaseConfig = {
-            apiKey: "AIzaSyDLBqzimyPQj16sGRC2mJaP5N4ZxjwQvm4",
-            authDomain: "adify-music-9280e.firebaseapp.com",
-            databaseURL: "https://adify-music-9280e-default-rtdb.asia-southeast1.firebasedatabase.app",
-            projectId: "adify-music-9280e",
-            storageBucket: "adify-music-9280e.firebasestorage.app",
-            messagingSenderId: "534415071027",
-            appId: "1:534415071027:web:255cb8f8869d87459a5046"
-        };
-
-        let db = null;
-        try {
-            firebase.initializeApp(firebaseConfig);
-            db = firebase.database();
-            console.log("[Adify] Firebase connected!");
-        } catch(e) {
-            console.error("[Adify] Firebase init error:", e);
-        }
-
-        function saveUserToCloud(userData) {
-            if (!db) return Promise.reject("DB not initialized");
-            return db.ref('users/' + userData.email.replace(/\./g, '_')).set(userData);
-        }
-
-        function loadUserFromCloud(email) {
-            if (!db) return Promise.resolve(null);
-            return db.ref('users/' + email.replace(/\./g, '_')).once('value')
-                .then(snapshot => snapshot.val())
-                .catch(err => { console.error("[Adify] Cloud load error:", err); return null; });
-        }
-
-        function updateProfileInCloud(email, updates) {
-            if (!db) return Promise.resolve();
-            return db.ref('users/' + email.replace(/\./g, '_')).update(updates)
-                .then(() => console.log("[Adify] Profile updated in cloud!"))
-                .catch(err => console.error("[Adify] Cloud update error:", err));
-        }
-
-        // ===== AUDIO STATE =====
-        const audio = document.getElementById("mainAudio");
-        let currentUrl = "", searchQuery = "", activeP = null, isDragging = false, isSelectionMode = false, currentTrackData = null, selectedSongs = new Set(), youtubeSongs = [];
-
-        const userPlaylists = { "Lo-Fi Sleep 😴": [], "Study Focus 📖": [], "Traveling ✈️": [], "My Playlist 💖": [] };
-
-        const allSongs = [
-            { id: 1, title: "Udariyan", artist: "Aditya", url: "https://www.image2url.com/r2/default/audio/1778420635219-a057d459-d0af-413e-bd2f-5f148740396c.mp3", image: "https://files.catbox.moe/0j9stc.jpeg" },
-            { id: 2, title: "BEST SHORT SONG", artist: "Aditya", url: "https://www.image2url.com/r2/default/audio/1778446960362-cacf9cfe-95fa-4724-80cd-79e9e3e38a08.mp3", image: "https://files.catbox.moe/0j9stc.jpeg" }
-        ];
-        const playlistsData = [
-            { name: "Lo-Fi Sleep 😴", img: "https://files.catbox.moe/0j9stc.jpeg" },
-            { name: "Study Focus 📖", img: "https://files.catbox.moe/t07xmg.jpeg" },
-            { name: "Traveling ✈️", img: "https://files.catbox.moe/pzdmjo.jpeg" },
-            { name: "My Playlist 💖", img: "https://images.unsplash.com/photo-1493225255756-d9584f8606e9?w=300" }
-        ];
 
         // ===== NAVIGATION =====
         function showScreen(screenId) {
@@ -1267,8 +1301,6 @@
         function doLogout() {
             stopAllPlayback();
             currentUser = null;
-            localStorage.removeItem('adify_current_session');
-            sessionStorage.removeItem('adify_backup_session');
             hideLogout();
             closeProfile();
             showScreen("loginScreen");
@@ -1323,85 +1355,6 @@
             document.getElementById('switch-text').innerHTML = isReg ? 'Already a member? <span onclick="toggleAuth(false)">Log In</span>' : 'New here? <span onclick="toggleAuth(true)">Create Account</span>';
         }
 
-        // ===== CROSS-DEVICE LOGIN =====
-        function findUserLocal(lid) {
-            let savedData = localStorage.getItem(lid);
-            if (savedData) {
-                try {
-                    const parsed = JSON.parse(savedData);
-                    if (parsed && parsed.password) return parsed;
-                } catch(e) {}
-            }
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && key.includes('@')) {
-                    try {
-                        const data = JSON.parse(localStorage.getItem(key));
-                        if (data && (data.email === lid || data.phone === lid)) {
-                            return data;
-                        }
-                    } catch(e) {}
-                }
-            }
-            return null;
-        }
-
-        function tryFirebaseLogin(lid, lpass) {
-            return new Promise((resolve) => {
-                if (!db) { 
-                    resolve({ error: "FIREBASE NOT CONNECTED" }); 
-                    return; 
-                }
-                const checkUser = (user) => {
-                    if (!user) return resolve(null);
-                    if (user.password === lpass) {
-                        localStorage.setItem(user.email, JSON.stringify(user));
-                        if (user.phone) localStorage.setItem(user.phone, JSON.stringify(user));
-                        resolve(user);
-                    } else {
-                        resolve({ error: "WRONG PASSWORD" });
-                    }
-                };
-                if (lid.includes('@')) {
-                    const safeKey = lid.replace(/\./g, '_');
-                    db.ref('users/' + safeKey).once('value')
-                        .then(snap => { checkUser(snap.val()); })
-                        .catch(err => { resolve({ error: "FIREBASE ERROR: " + err.message }); });
-                } else {
-                    db.ref('users').once('value')
-                        .then(snap => {
-                            const users = snap.val();
-                            if (!users) return resolve(null);
-                            for (let key in users) {
-                                if (users[key] && users[key].phone === lid) {
-                                    return checkUser(users[key]);
-                                }
-                            }
-                            resolve(null);
-                        })
-                        .catch(err => { resolve({ error: "FIREBASE ERROR: " + err.message }); });
-                }
-            });
-        }
-
-        function finalizeLogin(user) {
-            currentUser = user;
-            saveSession(user);
-            loadUserPlaylists();
-            loadUserFromCloud(user.email).then(cloudData => {
-                if (cloudData) {
-                    currentUser = cloudData;
-                    saveSession(cloudData);
-                }
-                if (currentUser.photo) {
-                    document.getElementById('main-pfp').src = currentUser.photo;
-                    document.getElementById('homeProfileImg').src = currentUser.photo;
-                }
-                showPopup(`WELCOME BACK, ${currentUser.name.toUpperCase()}`, "success");
-                setTimeout(() => { openHome(); }, 1000);
-            });
-        }
-
         async function handleSubmit() {
             if (!isRegisterMode) {
                 const lid = document.getElementById('login-id').value.toLowerCase().trim();
@@ -1409,30 +1362,18 @@
                 if (lid === "1" && lpass === "1") {
                     showPopup("MASTER LOGIN SUCCESS", "success");
                     currentUser = { name: 'Master', email: 'master@adify.com', phone: '0000000000', gender: 'Male', age: 21 };
-                    saveSession(currentUser);
-                    loadUserPlaylists();
+                    await saveSession(currentUser);
+                    await loadUserPlaylists();
                     setTimeout(() => { openHome(); }, 1000); 
                     return;
                 }
-                const localUser = findUserLocal(lid);
-                if (localUser) {
-                    if (localUser.password === lpass) {
-                        finalizeLogin(localUser);
-                    } else {
-                        showPopup("WRONG PASSWORD", "error");
-                    }
-                    return;
-                }
+
                 showPopup("VERIFYING USER...", "success");
                 const result = await tryFirebaseLogin(lid, lpass);
                 if (result === null) {
                     showPopup("USER NOT FOUND", "error");
                 } else if (result.error) {
-                    if (result.error.includes("FIREBASE")) {
-                        showPopup("SERVER ERROR - CHECK CONSOLE", "error");
-                    } else {
-                        showPopup(result.error, "error");
-                    }
+                    showPopup(result.error, "error");
                 } else {
                     finalizeLogin(result);
                 }
@@ -1443,23 +1384,18 @@
                 const phone = document.getElementById('reg-phone').value;
                 const pass = document.getElementById('reg-pass').value;
                 const age = document.getElementById('reg-age').value;
-                if (localStorage.getItem(email)) { showPopup("EMAIL ALREADY REGISTERED", "error"); return; }
-                let phoneCountKey = "count_" + phone;
-                let currentCount = parseInt(localStorage.getItem(phoneCountKey)) || 0;
-                if (currentCount >= 3) { showPopup("MAX 3 ACCOUNTS PER NUMBER", "error"); return; }
+
+                const emailExists = await checkEmailExists(email);
+                if (emailExists) { showPopup("EMAIL ALREADY REGISTERED", "error"); return; }
+
+                const phoneCount = await checkPhoneCount(phone);
+                if (phoneCount >= 3) { showPopup("MAX 3 ACCOUNTS PER NUMBER", "error"); return; }
+
                 if (name && emailRegex.test(emailInput) && phone.length === 10 && pass.length >= 8 && age >= 18) {
                     const userData = { name: name, email: email, phone: phone, password: pass, gender: selectedGender, age: age, photo: null };
-                    localStorage.setItem(email, JSON.stringify(userData));
-                    localStorage.setItem(phone, JSON.stringify(userData));
-                    localStorage.setItem(phoneCountKey, currentCount + 1);
-                    saveSession(userData);
-                    showPopup("SYNCING TO CLOUD...", "success");
-                    try {
-                        await saveUserToCloud(userData);
-                        showPopup("REGISTERED SUCCESSFULLY", "success");
-                    } catch(e) {
-                        showPopup("REGISTERED - CLOUD SYNC FAILED", "error");
-                    }
+                    await saveUserToCloud(userData);
+                    await saveSession(userData);
+                    showPopup("REGISTERED SUCCESSFULLY", "success");
                     setTimeout(() => {
                         toggleAuth(false);
                         showPopup("PLEASE LOG IN WITH YOUR DETAILS", "success");
@@ -1468,6 +1404,24 @@
                     showPopup("PLEASE FIX ALL ERRORS", "error"); 
                 }
             }
+        }
+
+        async function finalizeLogin(user) {
+            currentUser = user;
+            await saveSession(user);
+            await loadUserPlaylists();
+            await loadYoutubeSongs();
+            const cloudData = await loadUserFromCloud(user.email);
+            if (cloudData) {
+                currentUser = cloudData;
+                await saveSession(cloudData);
+            }
+            if (currentUser.photo) {
+                document.getElementById('main-pfp').src = currentUser.photo;
+                document.getElementById('homeProfileImg').src = currentUser.photo;
+            }
+            showPopup(`WELCOME BACK, ${currentUser.name.toUpperCase()}`, "success");
+            setTimeout(() => { openHome(); }, 1000);
         }
 
         // ===== HOME FUNCTIONS =====
@@ -1482,14 +1436,14 @@
             const popup = document.getElementById('globalPopup');
             document.getElementById('playlistOptions').innerHTML = playlistsData.map(p => {
                 const ex = userPlaylists[p.name].some(x => x.id === id);
-                return '<div class="menu-item" onclick="playlistAction(' + id + ', ' + "'" + p.name + "', " + ex + ')"><span>' + p.name + '</span><span style="color:' + (ex ? 'var(--danger)' : 'var(--primary)') + '; font-weight:bold;">' + (ex ? 'REMOVE' : 'ADD') + '</span></div>';
+                return '<div class="menu-item" onclick="playlistAction(' + id + ', ' + "'" + p.name + "'" + ', ' + ex + ')"><span>' + p.name + '</span><span style="color:' + (ex ? 'var(--danger)' : 'var(--primary)') + '; font-weight:bold;">' + (ex ? 'REMOVE' : 'ADD') + '</span></div>';
             }).join(''); popup.classList.add('show');
         }
-        function playlistAction(id, pN, ex) {
+        async function playlistAction(id, pN, ex) {
             if (ex) userPlaylists[pN] = userPlaylists[pN].filter(s => s.id !== id);
             else userPlaylists[pN].push(allSongs.find(s => s.id === id));
             showToast(ex ? "Removed!" : "Added!");
-            saveUserPlaylists();
+            await saveUserPlaylists();
             document.getElementById('globalPopup').classList.remove('show'); refreshView();
         }
         function songItemTemplate(s) {
@@ -1504,14 +1458,14 @@
             }
             const moreBtn = !isSelectionMode 
                 ? (s.ytId 
-                    ? '<div class="more-btn" onclick="event.stopPropagation(); openYtMenu(event, ' + "'" + s.ytId + "')" + '">⋮</div>' 
+                    ? '<div class="more-btn" onclick="event.stopPropagation(); openYtMenu(event, ' + "'" + s.ytId + "'" + ')">⋮</div>' 
                     : '<div class="more-btn" onclick="openMenu(event, ' + s.id + ')">⋮</div>')
                 : '<div style="color:var(--danger); font-weight:bold; margin-right:10px;">' + (isS ? '✓' : '') + '</div>';
             return '<div class="song-item ' + (isP ? 'playing-active' : '') + ' ' + (isS ? 'selected-to-remove' : '') + '" onclick="' + clickAction + '"><div style="display:flex; align-items:center; flex:1"><div class="img-container"><img src="' + s.image + '" class="song-img"></div><div style="overflow:hidden; flex:1"><h4>' + s.title + '</h4><p style="font-size:10px; opacity:0.5">' + s.artist + '</p></div></div>' + moreBtn + '</div>';
         }
         function renderAll() {
             try {
-                document.getElementById('mainPlaylistGrid').innerHTML = playlistsData.filter(p => p.name.toLowerCase().includes(searchQuery)).map(p => '<div class="card" onclick="openPlaylist(' + "'" + p.name + "')" + '"><div class="art" style="background: url(' + "'" + p.img + "');" + '"></div><p style="font-size:10px;">' + p.name + '</p></div>').join('');
+                document.getElementById('mainPlaylistGrid').innerHTML = playlistsData.filter(p => p.name.toLowerCase().includes(searchQuery)).map(p => '<div class="card" onclick="openPlaylist(' + "'" + p.name + "'" + ')"><div class="art" style="background: url(' + "'" + p.img + "');" + '"></div><p style="font-size:10px;">' + p.name + '</p></div>').join('');
                 const merged = [...allSongs];
                 if (youtubeSongs && Array.isArray(youtubeSongs)) {
                     youtubeSongs.forEach(yt => {
@@ -1549,7 +1503,6 @@
                     art.style.backgroundSize = 'cover';
                     art.classList.add('music-playing');
                     updatePlayIcon(true);
-                    // Setup media session for background playback
                     updateMediaSessionMetadata(t, a, i);
                 }).catch(err => {
                     document.getElementById('pTitle').innerText = t;
@@ -1590,7 +1543,6 @@
                 } catch(e) {
                     console.error("[Adify] YouTube toggle error:", e);
                 }
-                // Update media session state
                 if ('mediaSession' in navigator) {
                     navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
                 }
@@ -1722,9 +1674,9 @@
             renderPlaylistSongs();
         }
         function toggleSelectSong(id) { selectedSongs.has(id) ? selectedSongs.delete(id) : selectedSongs.add(id); renderPlaylistSongs(); }
-        function confirmRemoval() { 
+        async function confirmRemoval() { 
             userPlaylists[activeP] = userPlaylists[activeP].filter(s => !selectedSongs.has(s.id)); 
-            saveUserPlaylists();
+            await saveUserPlaylists();
             showToast("Songs Removed!"); 
             disableSelectionMode(); 
         }
@@ -1775,7 +1727,7 @@
             reader.onload = () => { currentPhoto = reader.result; };
             if (e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
         }
-        function saveProfile() {
+        async function saveProfile() {
             const newName = document.getElementById('edit-name').value;
             const newAge = document.getElementById('edit-age').value;
             if (newName && newAge) {
@@ -1783,10 +1735,8 @@
                 currentUser.age = newAge;
                 currentUser.gender = selectedGenderProfile;
                 if (currentPhoto) currentUser.photo = currentPhoto;
-                localStorage.setItem(currentUser.email, JSON.stringify(currentUser));
-                if (currentUser.phone) localStorage.setItem(currentUser.phone, JSON.stringify(currentUser));
-                saveSession(currentUser);
-                updateProfileInCloud(currentUser.email, {
+                await saveSession(currentUser);
+                await updateProfileInCloud(currentUser.email, {
                     name: newName, age: newAge, gender: selectedGenderProfile, photo: currentUser.photo
                 });
                 document.getElementById('display-name').innerText = newName;
@@ -1806,28 +1756,41 @@
         function showLogout() { document.getElementById('logout-modal').style.display = 'flex'; }
         function hideLogout() { document.getElementById('logout-modal').style.display = 'none'; }
 
-        function getYoutubeSongsKey() {
-            return 'adify_yt_songs_' + (currentUser ? currentUser.email.replace(/\./g, '_') : 'default');
+        function updateProfileUI(user) {
+            document.getElementById("display-name").innerText = user.name || "Adify User";
+            document.getElementById("p-gender").innerText = user.gender || "Male";
+            document.getElementById("p-email").innerText = user.email || "user@adify.com";
+            document.getElementById("p-phone").innerText = user.phone ? "+91 " + user.phone : "+91 98765 43210";
+            document.getElementById("p-age").innerText = (user.age || 22) + " Years";
+            const pfp = user.photo || "https://api.dicebear.com/7.x/avataaars/svg?seed=" + (user.name || "User");
+            document.getElementById('main-pfp').src = pfp;
+            document.getElementById('homeProfileImg').src = pfp;
         }
 
-        function saveYoutubeSongs() {
-            try {
-                localStorage.setItem(getYoutubeSongsKey(), JSON.stringify(youtubeSongs));
-            } catch(e) {}
-        }
+        let isRegisterMode = false;
+        let selectedGender = "Male";
+        let currentPhoto = null;
+        let selectedGenderProfile = "Male";
+        let currentUser = null;
+        const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
 
-        function loadYoutubeSongs() {
-            try {
-                const saved = localStorage.getItem(getYoutubeSongsKey());
-                if (saved) {
-                    youtubeSongs = JSON.parse(saved);
-                } else {
-                    youtubeSongs = [];
-                }
-            } catch(e) { youtubeSongs = []; }
-        }
+        const audio = document.getElementById("mainAudio");
+        let currentUrl = "", searchQuery = "", activeP = null, isDragging = false, isSelectionMode = false, currentTrackData = null, selectedSongs = new Set(), youtubeSongs = [];
 
-        // ===== BACK BUTTON HANDLER - NO PAGE RELOAD =====
+        const userPlaylists = { "Lo-Fi Sleep 😴": [], "Study Focus 📖": [], "Traveling ✈️": [], "My Playlist 💖": [] };
+
+        const allSongs = [
+            { id: 1, title: "Udariyan", artist: "Aditya", url: "https://www.image2url.com/r2/default/audio/1778420635219-a057d459-d0af-413e-bd2f-5f148740396c.mp3", image: "https://files.catbox.moe/0j9stc.jpeg" },
+            { id: 2, title: "BEST SHORT SONG", artist: "Aditya", url: "https://www.image2url.com/r2/default/audio/1778446960362-cacf9cfe-95fa-4724-80cd-79e9e3e38a08.mp3", image: "https://files.catbox.moe/0j9stc.jpeg" }
+        ];
+        const playlistsData = [
+            { name: "Lo-Fi Sleep 😴", img: "https://files.catbox.moe/0j9stc.jpeg" },
+            { name: "Study Focus 📖", img: "https://files.catbox.moe/t07xmg.jpeg" },
+            { name: "Traveling ✈️", img: "https://files.catbox.moe/pzdmjo.jpeg" },
+            { name: "My Playlist 💖", img: "https://images.unsplash.com/photo-1493225255756-d9584f8606e9?w=300" }
+        ];
+
+        // ===== BACK BUTTON HANDLER =====
         let isHandlingBack = false;
         let backPressCount = 0;
         let backPressTimer = null;
@@ -1904,48 +1867,39 @@
 
         // ===== window.onload =====
         window.onload = function() {
-            // Setup Media Session for background playback
-            setupMediaSession();
-
-            const user = getSession();
-            if (user) {
-                currentUser = user;
-                loadUserPlaylists();
-                updateProfileUI(currentUser);
-                document.getElementById('loginScreen').classList.remove('active');
-                document.getElementById('homeScreen').classList.add('active');
-                renderAll();
-                detectDevice();
-
-                const loader = document.getElementById('loadingOverlay');
-                if (loader) loader.classList.add('hidden');
-
-                setTimeout(() => {
-                    showPopup("WELCOME BACK, " + (currentUser.name || "USER").toUpperCase(), "success");
-                }, 500);
-
-                loadUserFromCloud(currentUser.email).then(cloudData => {
-                    if (cloudData) {
-                        currentUser = cloudData;
-                        saveSession(cloudData);
-                        updateProfileUI(currentUser);
-                    }
-                }).catch(() => {});
-
-                setupBackButton();
-                return;
-            }
-
-            document.getElementById('homeScreen').classList.remove('active');
+            // IMMEDIATELY show login screen - no waiting
+            document.getElementById('loadingOverlay').style.display = 'none';
             document.getElementById('loginScreen').classList.add('active');
-            loadYoutubeSongs();
-            renderAll();
-            detectDevice();
 
-            const loader = document.getElementById('loadingOverlay');
-            if (loader) loader.classList.add('hidden');
+            // Try to load session in background
+            setTimeout(async function() {
+                try {
+                    if (typeof firebase !== 'undefined' && firebase.apps.length > 0) {
+                        const user = await getSession();
+                        if (user) {
+                            currentUser = user;
+                            await loadUserPlaylists();
+                            await loadYoutubeSongs();
+                            updateProfileUI(currentUser);
+                            document.getElementById('loginScreen').classList.remove('active');
+                            document.getElementById('homeScreen').classList.add('active');
+                            renderAll();
+                            detectDevice();
+                            showPopup("WELCOME BACK, " + (currentUser.name || "USER").toUpperCase(), "success");
 
-            setupBackButton();
+                            const cloudData = await loadUserFromCloud(currentUser.email);
+                            if (cloudData) {
+                                currentUser = cloudData;
+                                await saveSession(cloudData);
+                                updateProfileUI(currentUser);
+                            }
+                        }
+                    }
+                } catch(e) {
+                    console.error('[Adify] Background load error:', e);
+                }
+                setupBackButton();
+            }, 100);
         };
     </script>
 </body>
