@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Syncopate:wght@700&family=Inter:wght@400;600&family=Poppins:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
-        /* ========== ALL CSS UNCHANGED ========== */
+        /* ALL EXISTING CSS UNCHANGED */
         :root {
             --sky-blue: #00BFFF;
             --deep-blue: #001529;
@@ -277,7 +277,7 @@
                 <button style="background:var(--glass); color:white; border:1px solid var(--border); padding:10px 18px; border-radius:10px; font-size:11px; cursor:pointer;" onclick="resetToHome()">🏠 HOME</button>
             </div>
             <h2 id="playlistTitle" style="font-size:24px; margin-bottom:15px; color:var(--primary);"></h2>
-            <!-- 🟢 "Select songs to remove" button REMOVED; only confirm/cancel if needed -->
+            <!-- "Select songs to remove" button completely removed -->
             <div class="playlist-actions">
                 <button id="confirmBtn" class="action-btn" style="display:none; background:var(--success); color:white; border:none;" onclick="confirmRemoval()">Confirm Remove Selected</button>
                 <button id="cancelBtn" class="action-btn" style="display:none; background:var(--glass); color:white; border:1px solid var(--border);" onclick="disableSelectionMode()">Cancel</button>
@@ -426,7 +426,7 @@
     </div>
 
     <script>
-        // ==================== COMPLETE LOGIC WITH INSTANT LOADING & NO SELECT BUTTON ====================
+        // ==================== COMPLETE CODE WITH INSTANT LOADING & NO MODEBTN ERRORS ====================
         const YOUTUBE_API_KEY = "AIzaSyBIpUJaQat1LYezbd3DYfteoVOBHAjxems";
         let youtubePlayer = null, isYouTubePlaying = false, currentYouTubeId = null, youtubeResults = [];
         let searchTimeout = null, isPlaying = false, ytDuration = 0, ytCurrentTime = 0, ytTimeInterval = null, ytPlayerReady = false;
@@ -489,7 +489,7 @@
         function getSessionEmail() { return localStorage.getItem('adify_session_email'); }
         function clearSessionEmail() { localStorage.removeItem('adify_session_email'); }
 
-        // ---- LOCAL CACHING HELPERS ----
+        // ---- LOCAL CACHE HELPERS ----
         function saveCache(key, data) { try { localStorage.setItem(key, JSON.stringify(data)); } catch(e) {} }
         function loadCache(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch(e) { return fallback; } }
 
@@ -518,7 +518,6 @@
             try{ await db.ref(userPath(currentUser.email,'playlists')).set(userPlaylists); }catch(e){}
         }
         async function loadUserPlaylists() {
-            // Use cache first, then cloud
             const cached = loadCache('adify_playlists', userPlaylists);
             Object.keys(cached).forEach(key => { if(cached[key] && Array.isArray(cached[key])) userPlaylists[key] = cached[key]; });
             if(!db||!currentUser||!currentUser.email) return;
@@ -610,7 +609,6 @@
             currentUser = null;
             clearSessionEmail();
             localStorage.removeItem('adify_user_profile');
-            // Optionally clear caches or keep them for next session
             hideLogout(); closeProfile();
             showScreen("loginScreen");
             document.getElementById("login-id").value = "";
@@ -745,6 +743,7 @@
             } catch(err) { console.error("renderAll error", err); }
         }
 
+        // ---- SEARCH SCREEN ----
         function openSearchScreen(e) { if(e)e.stopPropagation(); showScreen('searchScreen'); renderRecentSearches(); setTimeout(()=>document.getElementById('searchPageInput').focus(),100); }
         function closeSearch() { if(searchTimeout)clearTimeout(searchTimeout); document.getElementById('searchPageInput').value=''; document.getElementById('searchClearBtn').style.display='none'; document.getElementById('recentSearchesSection').style.display='block'; document.getElementById('searchResultsSection').style.display='none'; document.getElementById('ytSearchResultsSection').style.display='none'; showScreen('homeScreen'); renderAll(); }
         function clearSearchInput() { document.getElementById('searchPageInput').value=''; document.getElementById('searchClearBtn').style.display='none'; document.getElementById('recentSearchesSection').style.display='block'; document.getElementById('searchResultsSection').style.display='none'; document.getElementById('ytSearchResultsSection').style.display='none'; document.getElementById('searchPageInput').focus(); }
@@ -810,6 +809,7 @@
             refreshView();
         }
 
+        // ---- PLAYBACK & HISTORY ----
         function addToHistory(track) {
             if (playHistory.length === 0 || playHistory[historyIndex].url !== track.url) {
                 if (historyIndex < playHistory.length - 1) playHistory = playHistory.slice(0, historyIndex + 1);
@@ -914,7 +914,7 @@
             refreshView();
         }
 
-        // ... YouTube player, seek, etc. unchanged (same as previous code) ...
+        // ---- YOUTUBE PLAYER ----
         function loadYouTubePlayer(videoId) { const w=document.getElementById('yt-player-wrapper'); w.innerHTML=''; if(!window.YT||!YT.Player){ const t=document.createElement('script'); t.src="https://www.youtube.com/iframe_api"; t.onload=function(){window._pendingVideoId=videoId;}; document.head.appendChild(t); }else createYouTubePlayer(videoId); }
         window.onYouTubeIframeAPIReady = function() { if(window._pendingVideoId){ createYouTubePlayer(window._pendingVideoId); window._pendingVideoId=null; } };
         function createYouTubePlayer(videoId) { const w=document.getElementById('yt-player-wrapper'); w.innerHTML='<div id="youtube-player"></div>'; try{ youtubePlayer = new YT.Player('youtube-player',{ height:'1', width:'1', videoId:videoId, playerVars:{autoplay:1,controls:0,disablekb:1,fs:0,modestbranding:1,rel:0,showinfo:0,iv_load_policy:3,playsinline:1}, events:{ onReady:function(e){ ytPlayerReady=true; e.target.playVideo(); e.target.unMute(); startYtTimeUpdate(); }, onStateChange:function(e){ if(e.data===YT.PlayerState.ENDED){ if(isAutoPlayMode) playNextYoutubeAuto(); else nextTrack(); } if(e.data===YT.PlayerState.PLAYING){ isPlaying=true; updatePlayIcon(true); document.getElementById('playerImgArt').classList.add('music-playing'); try{ ytDuration=youtubePlayer.getDuration(); document.getElementById('totalDuration').innerText=formatTime(ytDuration); }catch(e){} } else if(e.data===YT.PlayerState.PAUSED){ isPlaying=false; updatePlayIcon(false); document.getElementById('playerImgArt').classList.remove('music-playing'); } }, onError:function(e){ console.error("YouTube error",e.data); showPopup("PLAYBACK ERROR","error"); } } }); }catch(e){ console.error("Player init failed",e); } }
@@ -937,11 +937,12 @@
         audio.onloadedmetadata = () => { if(!isYouTubePlaying&&audio.duration&&isFinite(audio.duration)) document.getElementById('totalDuration').innerText=formatTime(audio.duration); };
         audio.onerror = () => { console.error("Audio error",audio.error); isPlaying=false; updatePlayIcon(false); document.getElementById('playerImgArt').classList.remove('music-playing'); };
 
+        // ---- PLAYLIST (selection button removed, but functions made safe) ----
         function openPlaylist(n) { activeP=n; document.getElementById('homeView').classList.remove('active'); document.getElementById('playlistView').classList.add('active'); document.getElementById('playlistTitle').innerText=n; document.getElementById('searchToggleBtn').style.display='none'; renderPlaylistSongs(); }
         function resetToHome() { activeP=null; document.getElementById('playlistView').classList.remove('active'); document.getElementById('homeView').classList.add('active'); document.getElementById('searchToggleBtn').style.display='flex'; renderAll(); }
-        // Selection mode functions remain but no button to trigger them unless manually called
-        function enableSelectionMode() { isSelectionMode=true; selectedSongs.clear(); document.getElementById('confirmBtn').style.display='block'; document.getElementById('cancelBtn').style.display='block'; renderPlaylistSongs(); }
-        function disableSelectionMode() { isSelectionMode=false; selectedSongs.clear(); document.getElementById('confirmBtn').style.display='none'; document.getElementById('cancelBtn').style.display='none'; renderPlaylistSongs(); }
+        // Safe references to modeBtn (which no longer exists)
+        function enableSelectionMode() { isSelectionMode=true; selectedSongs.clear(); const modeBtn=document.getElementById('modeBtn'); if(modeBtn) modeBtn.style.display='none'; document.getElementById('confirmBtn').style.display='block'; document.getElementById('cancelBtn').style.display='block'; renderPlaylistSongs(); }
+        function disableSelectionMode() { isSelectionMode=false; selectedSongs.clear(); const modeBtn=document.getElementById('modeBtn'); if(modeBtn) modeBtn.style.display='block'; document.getElementById('confirmBtn').style.display='none'; document.getElementById('cancelBtn').style.display='none'; renderPlaylistSongs(); }
         function toggleSelectSong(id) { selectedSongs.has(id)?selectedSongs.delete(id):selectedSongs.add(id); renderPlaylistSongs(); }
         async function confirmRemoval() {
             if (!activeP) return;
@@ -956,6 +957,7 @@
         }
         function refreshView() { if(activeP) renderPlaylistSongs(); else renderAll(); }
 
+        // ---- PROFILE ----
         function updateProfileUI(user) {
             document.getElementById("display-name").innerText=user.name||"Adify User";
             document.getElementById("p-gender").innerText=user.gender||"Male";
@@ -973,7 +975,7 @@
         function closeEdit() { document.getElementById('edit-screen').style.display='none'; }
         function handleImg(e) { const reader=new FileReader(); reader.onload=()=>{ currentPhoto=reader.result; }; if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]); }
 
-        // Instant profile save + background Firebase sync
+        // Instant save + background Firebase sync
         function saveProfile() {
             const newName = document.getElementById('edit-name').value;
             const newAge = document.getElementById('edit-age').value;
@@ -987,7 +989,6 @@
             showToast("PROFILE UPDATED SUCCESSFULLY", "success");
             const profileData = { name: currentUser.name, email: currentUser.email, phone: currentUser.phone, gender: currentUser.gender, age: currentUser.age, photo: currentUser.photo };
             localStorage.setItem('adify_user_profile', JSON.stringify(profileData));
-            // Background sync
             setTimeout(() => {
                 updateProfileInCloud(currentUser.email, { name: newName, age: newAge, gender: selectedGenderProfile, photo: currentUser.photo }).catch(e => console.log("Background sync failed", e));
             }, 500);
@@ -1007,12 +1008,15 @@
         function handleBackButton(e) { /* ... unchanged ... */ }
         function setupBackButton() { /* ... unchanged ... */ }
 
-        // ========== INSTANT STARTUP WITH CACHE ==========
+        // ========== INSTANT STARTUP (loading overlay hidden immediately) ==========
         window.onload = async function() {
+            // HIDE LOADING OVERLAY RIGHT AWAY
+            document.getElementById('loadingOverlay').classList.add('hidden');
+
             setupMediaSession();
             const savedEmail = getSessionEmail();
             if (savedEmail && db) {
-                // 1. Load cached profile and display immediately
+                // 1. Load cached profile instantly
                 const cachedProfile = localStorage.getItem('adify_user_profile');
                 if (cachedProfile) {
                     try {
@@ -1021,16 +1025,13 @@
                         updateProfileUI(currentUser);
                     } catch(e) {}
                 }
-                // 2. Load cached playlists, youtubeSongs, recentlyPlayed instantly (already loaded from cache in global vars)
-                // (they were initialised from localStorage at the top)
-                // 3. Show home screen right away
+                // 2. Show home screen immediately
                 document.getElementById('loginScreen').classList.remove('active');
                 document.getElementById('homeScreen').classList.add('active');
                 renderAll();
                 detectDevice();
-                document.getElementById('loadingOverlay').classList.add('hidden');
                 
-                // 4. Now sync with Firebase in background
+                // 3. Background sync with Firebase
                 (async function backgroundSync() {
                     try {
                         const user = await loadUserFromCloud(savedEmail);
@@ -1039,13 +1040,11 @@
                             updateProfileUI(currentUser);
                             const profileData = { name: user.name, email: user.email, phone: user.phone, gender: user.gender, age: user.age, photo: user.photo };
                             localStorage.setItem('adify_user_profile', JSON.stringify(profileData));
-                        } else {
-                            // user not found on cloud, keep cached data
                         }
-                        await loadUserPlaylists();  // will update cache and re-render if needed
+                        await loadUserPlaylists();
                         await loadYoutubeSongs();
                         await loadRecentlyPlayed();
-                        renderAll(); // refresh after cloud sync (silent update)
+                        renderAll(); // silent update after cloud sync
                     } catch(e) { console.log("Background sync error", e); }
                 })();
 
@@ -1056,7 +1055,6 @@
             document.getElementById('homeScreen').classList.remove('active');
             document.getElementById('loginScreen').classList.add('active');
             detectDevice();
-            document.getElementById('loadingOverlay').classList.add('hidden');
             setupBackButton();
         };
     </script>
