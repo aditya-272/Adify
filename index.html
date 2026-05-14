@@ -7,7 +7,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Syncopate:wght@700&family=Inter:wght@400;600&family=Poppins:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
-        /* ALL EXISTING CSS UNCHANGED */
         :root {
             --sky-blue: #00BFFF;
             --deep-blue: #001529;
@@ -78,6 +77,8 @@
         #searchToggleBtn:active { transform: translateX(-50%) scale(0.8); background: rgba(0,132,255,0.2); opacity: 1; }
         .profile-btn { width: 35px; height: 35px; background: var(--glass); border: 1px solid var(--border); border-radius: 50%; overflow: hidden; cursor: pointer; }
         .profile-btn img { width: 100%; height: 100%; object-fit: cover; }
+
+        /* ===== SEARCH SCREEN STYLES ===== */
         .search-header{padding:20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)}
         .search-back-btn{width:40px;height:40px;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;border-radius:50%;cursor:pointer;flex-shrink:0}
         .search-back-btn:active{background:rgba(0,191,255,0.2)}
@@ -97,6 +98,7 @@
         .recent-search-delete { color: #555; font-size: 16px; padding: 8px; cursor: pointer; border-radius: 50%; }
         .recent-search-delete:active { color: var(--danger); background: rgba(255,71,87,0.1); }
         .no-recent { text-align: center; color: #555; font-size: 13px; padding: 40px 20px; }
+
         .view { flex: 1; padding: 10px 20px; overflow-y: auto; display: none; padding-bottom: 160px; scroll-behavior: smooth; }
         .view.active { display: block; }
         .section-title { font-size: 10px; color: var(--primary); letter-spacing: 1px; margin: 15px 0 12px; text-transform: uppercase; font-weight: bold; }
@@ -156,8 +158,10 @@
         #edit-screen { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 1000; padding: 30px; backdrop-filter: blur(20px); overflow-y: auto; }
         .edit-input { width: 100%; padding: 16px; background: rgba(255,255,255,0.02); border: 1px solid var(--glass-edge); border-radius: 15px; color: #fff; font-size: 15px; outline: none !important; transition: 0.3s; margin-bottom: 20px; }
         .edit-input:focus { border-color: var(--sky-blue); }
+
         #yt-player-wrapper { position: fixed; bottom: 0; left: 0; width: 100%; height: 1px; z-index: 1; overflow: hidden; opacity: 0; pointer-events: none; }
         #yt-player-wrapper iframe { width: 100%; height: 200px; border: none; }
+
         #loadingOverlay { position: fixed; inset: 0; background: radial-gradient(circle at top right, #001f3f, #000814); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 99999; transition: opacity 0.3s ease; }
         #loadingOverlay.hidden { opacity: 0; pointer-events: none; }
         .loading-spinner { width: 40px; height: 40px; border: 3px solid rgba(0,191,255,0.2); border-top-color: var(--sky-blue); border-radius: 50%; animation: spin 1s linear infinite; }
@@ -182,7 +186,7 @@
     <div id="toast"><i class="fas fa-shield-alt"></i> PROFILE SECURED</div>
     <div id="status-popup"></div>
 
-    <!-- Global Popup -->
+    <!-- Global Popup (always visible) -->
     <div class="menu-dropdown" id="globalPopup" onclick="event.stopPropagation()">
         <div class="menu-header">ADD TO PLAYLIST</div>
         <div id="playlistOptions"></div>
@@ -277,8 +281,8 @@
                 <button style="background:var(--glass); color:white; border:1px solid var(--border); padding:10px 18px; border-radius:10px; font-size:11px; cursor:pointer;" onclick="resetToHome()">🏠 HOME</button>
             </div>
             <h2 id="playlistTitle" style="font-size:24px; margin-bottom:15px; color:var(--primary);"></h2>
-            <!-- "Select songs to remove" button completely removed -->
             <div class="playlist-actions">
+                <button id="modeBtn" class="action-btn btn-remove-mode" onclick="enableSelectionMode()">Select songs to remove</button>
                 <button id="confirmBtn" class="action-btn" style="display:none; background:var(--success); color:white; border:none;" onclick="confirmRemoval()">Confirm Remove Selected</button>
                 <button id="cancelBtn" class="action-btn" style="display:none; background:var(--glass); color:white; border:1px solid var(--border);" onclick="disableSelectionMode()">Cancel</button>
             </div>
@@ -331,6 +335,7 @@
                 <i class="fas fa-times search-clear-btn" id="searchClearBtn" onclick="clearSearchInput()"></i>
             </div>
         </div>
+
         <div class="search-content" id="searchContent">
             <div id="recentSearchesSection">
                 <div class="recent-searches-header">
@@ -339,9 +344,11 @@
                 </div>
                 <div id="recentSearchesList"></div>
             </div>
+
             <div id="searchResultsSection" style="display:none;">
                 <p class="section-title">Tracks</p>
                 <div id="searchResultsTracks"></div>
+
                 <div id="ytSearchResultsSection" style="display:none;">
                     <p class="section-title">YouTube Results</p>
                     <div id="searchResultsYouTube"></div>
@@ -426,13 +433,13 @@
     </div>
 
     <script>
-        // ==================== COMPLETE CODE WITH INSTANT LOADING & NO MODEBTN ERRORS ====================
+        // ==================== FULL WORKING CODE WITH FIXES ====================
         const YOUTUBE_API_KEY = "AIzaSyBIpUJaQat1LYezbd3DYfteoVOBHAjxems";
         let youtubePlayer = null, isYouTubePlaying = false, currentYouTubeId = null, youtubeResults = [];
         let searchTimeout = null, isPlaying = false, ytDuration = 0, ytCurrentTime = 0, ytTimeInterval = null, ytPlayerReady = false;
         let playHistory = [], historyIndex = -1, recentlyPlayed = [];
 
-        // ---- MEDIA SESSION ----
+        // ---- MEDIA SESSION (NOTIFICATION) ----
         function setupMediaSession() {
             if ('mediaSession' in navigator) {
                 navigator.mediaSession.setActionHandler('play', () => togglePlay());
@@ -459,11 +466,19 @@
             }
         }
 
+        // ---- BACKGROUND PLAYBACK: STRONGER RESUME ----
         document.addEventListener('visibilitychange', () => {
             if (document.hidden && isPlaying) {
-                if (!isYouTubePlaying && audio.src && audio.paused) audio.play().catch(() => {});
+                // If local audio, try to resume immediately
+                if (!isYouTubePlaying && audio.src && audio.paused) {
+                    audio.play().catch(() => {});
+                }
+                // YouTube iframe keeps playing on its own
             } else if (!document.hidden && isPlaying) {
-                if (!isYouTubePlaying && audio.paused && audio.src) audio.play().catch(() => {});
+                // When coming back, ensure play state is correct
+                if (!isYouTubePlaying && audio.paused && audio.src) {
+                    audio.play().catch(() => {});
+                }
             }
         });
 
@@ -485,15 +500,12 @@
             return subPath ? `users/${key}/${subPath}` : `users/${key}`;
         }
 
+        // ---- SESSION (localStorage for persistence) ----
         function saveSessionEmail(email) { localStorage.setItem('adify_session_email', email); }
         function getSessionEmail() { return localStorage.getItem('adify_session_email'); }
         function clearSessionEmail() { localStorage.removeItem('adify_session_email'); }
 
-        // ---- LOCAL CACHE HELPERS ----
-        function saveCache(key, data) { try { localStorage.setItem(key, JSON.stringify(data)); } catch(e) {} }
-        function loadCache(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch(e) { return fallback; } }
-
-        // ---- RECENT SEARCHES ----
+        // ---- RECENT SEARCHES (CLOUD) ----
         async function getRecentSearches() { if(!db||!currentUser||!currentUser.email) return []; try{ const snap=await db.ref(userPath(currentUser.email,'recentSearches')).once('value'); const v=snap.val(); return Array.isArray(v)?v:[]; }catch(e){return[];} }
         async function saveRecentSearch(query) { if(!query||query.trim().length<2||!db||!currentUser||!currentUser.email) return; const searches=await getRecentSearches(); const clean=query.trim(); const f=searches.filter(s=>s.toLowerCase()!==clean.toLowerCase()); f.unshift(clean); try{ await db.ref(userPath(currentUser.email,'recentSearches')).set(f.slice(0,10)); }catch(e){} renderRecentSearches(); }
         async function removeRecentSearch(query) { const s=await getRecentSearches(); const upd=s.filter(x=>x!==query); if(db&&currentUser&&currentUser.email) await db.ref(userPath(currentUser.email,'recentSearches')).set(upd); renderRecentSearches(); }
@@ -507,62 +519,17 @@
         }
         function searchFromRecent(query) { document.getElementById('searchPageInput').value=query; document.getElementById('searchClearBtn').style.display='block'; executeSearch(); }
 
-        // ---- PLAYLISTS + YOUTUBE + RECENTLY PLAYED WITH CACHE ----
-        const userPlaylists = loadCache('adify_playlists', { "Lo-Fi Sleep 😴": [], "Study Focus 📖": [], "Traveling ✈️": [], "My Playlist 💖": [] });
-        let youtubeSongs = loadCache('adify_youtubeSongs', []);
-        let recentlyPlayed = loadCache('adify_recentlyPlayed', []);
+        // ---- PLAYLISTS (CLOUD) ----
+        async function saveUserPlaylists() { if(!db||!currentUser||!currentUser.email) return; try{ await db.ref(userPath(currentUser.email,'playlists')).set(userPlaylists); }catch(e){} }
+        async function loadUserPlaylists() { if(!db||!currentUser||!currentUser.email) return; try{ const snap=await db.ref(userPath(currentUser.email,'playlists')).once('value'); const d=snap.val(); if(d&&typeof d==='object'){ Object.keys(userPlaylists).forEach(key=>{ if(d[key]&&Array.isArray(d[key])) userPlaylists[key]=d[key]; }); } }catch(e){} }
 
-        async function saveUserPlaylists() {
-            saveCache('adify_playlists', userPlaylists);
-            if(!db||!currentUser||!currentUser.email) return;
-            try{ await db.ref(userPath(currentUser.email,'playlists')).set(userPlaylists); }catch(e){}
-        }
-        async function loadUserPlaylists() {
-            const cached = loadCache('adify_playlists', userPlaylists);
-            Object.keys(cached).forEach(key => { if(cached[key] && Array.isArray(cached[key])) userPlaylists[key] = cached[key]; });
-            if(!db||!currentUser||!currentUser.email) return;
-            try{
-                const snap=await db.ref(userPath(currentUser.email,'playlists')).once('value');
-                const d=snap.val();
-                if(d&&typeof d==='object'){
-                    Object.keys(userPlaylists).forEach(key=>{ if(d[key]&&Array.isArray(d[key])) userPlaylists[key]=d[key]; });
-                    saveCache('adify_playlists', userPlaylists);
-                }
-            }catch(e){}
-        }
+        // ---- YOUTUBE SONGS (CLOUD) ----
+        async function saveYoutubeSongs() { if(!db||!currentUser||!currentUser.email) return; try{ await db.ref(userPath(currentUser.email,'youtubeSongs')).set(youtubeSongs); }catch(e){} }
+        async function loadYoutubeSongs() { if(!db||!currentUser||!currentUser.email) return; try{ const snap=await db.ref(userPath(currentUser.email,'youtubeSongs')).once('value'); const v=snap.val(); youtubeSongs=Array.isArray(v)?v:[]; }catch(e){youtubeSongs=[];} }
 
-        async function saveYoutubeSongs() {
-            saveCache('adify_youtubeSongs', youtubeSongs);
-            if(!db||!currentUser||!currentUser.email) return;
-            try{ await db.ref(userPath(currentUser.email,'youtubeSongs')).set(youtubeSongs); }catch(e){}
-        }
-        async function loadYoutubeSongs() {
-            youtubeSongs = loadCache('adify_youtubeSongs', []);
-            if(!db||!currentUser||!currentUser.email) return;
-            try{
-                const snap=await db.ref(userPath(currentUser.email,'youtubeSongs')).once('value');
-                const v=snap.val();
-                youtubeSongs=Array.isArray(v)?v:[];
-                saveCache('adify_youtubeSongs', youtubeSongs);
-            }catch(e){youtubeSongs=[];}
-        }
-
-        async function saveRecentlyPlayed() {
-            saveCache('adify_recentlyPlayed', recentlyPlayed);
-            if(!db||!currentUser||!currentUser.email) return;
-            try{ await db.ref(userPath(currentUser.email,'recentlyPlayed')).set(recentlyPlayed); }catch(e){}
-        }
-        async function loadRecentlyPlayed() {
-            recentlyPlayed = loadCache('adify_recentlyPlayed', []);
-            if(!db||!currentUser||!currentUser.email) return;
-            try{
-                const snap=await db.ref(userPath(currentUser.email,'recentlyPlayed')).once('value');
-                const v=snap.val();
-                recentlyPlayed=Array.isArray(v)?v:[];
-                saveCache('adify_recentlyPlayed', recentlyPlayed);
-            }catch(e){recentlyPlayed=[];}
-        }
-
+        // ---- RECENTLY PLAYED (CLOUD) ----
+        async function saveRecentlyPlayed() { if(!db||!currentUser||!currentUser.email) return; try{ await db.ref(userPath(currentUser.email,'recentlyPlayed')).set(recentlyPlayed); }catch(e){} }
+        async function loadRecentlyPlayed() { if(!db||!currentUser||!currentUser.email) return; try{ const snap=await db.ref(userPath(currentUser.email,'recentlyPlayed')).once('value'); const v=snap.val(); recentlyPlayed=Array.isArray(v)?v:[]; }catch(e){recentlyPlayed=[];} }
         function addToRecentlyPlayed(track) {
             recentlyPlayed = recentlyPlayed.filter(t => t.url !== track.url && t.videoId !== track.videoId);
             recentlyPlayed.unshift(track);
@@ -577,16 +544,18 @@
             container.innerHTML = recentlyPlayed.map(s => songItemTemplate(s)).join('');
         }
 
-        // ---- USER & PHONE ----
+        // ---- USER & PHONE COUNT ----
         async function saveUserToCloud(userData) { if(!db) return Promise.reject("DB not initialized"); return db.ref('users/'+userData.email.replace(/\./g,'_')).set(userData); }
         async function loadUserFromCloud(email) { if(!db) return null; try{ const snap=await db.ref('users/'+email.replace(/\./g,'_')).once('value'); return snap.val(); }catch(e){return null;} }
         async function updateProfileInCloud(email,updates) { if(!db) return; try{ await db.ref('users/'+email.replace(/\./g,'_')).update(updates); }catch(e){} }
         async function getPhoneCount(phone) { if(!db) return 0; try{ const snap=await db.ref('phoneCounts/'+phone).once('value'); const v=snap.val(); return typeof v==='number'?v:0; }catch(e){return 0;} }
         async function incrementPhoneCount(phone) { if(!db) return; const cur=await getPhoneCount(phone); await db.ref('phoneCounts/'+phone).set(cur+1); }
 
+        // ---- AUDIO & DATA ----
         const audio = document.getElementById("mainAudio");
-        let currentUrl = "", searchQuery = "", activeP = null, isDragging = false, isSelectionMode = false, selectedSongs = new Set();
+        let currentUrl = "", searchQuery = "", activeP = null, isDragging = false, isSelectionMode = false, selectedSongs = new Set(), youtubeSongs = [];
 
+        const userPlaylists = { "Lo-Fi Sleep 😴": [], "Study Focus 📖": [], "Traveling ✈️": [], "My Playlist 💖": [] };
         const allSongs = [
             { id: 1, title: "Udariyan", artist: "Aditya", url: "https://www.image2url.com/r2/default/audio/1778420635219-a057d459-d0af-413e-bd2f-5f148740396c.mp3", image: "https://www.image2url.com/r2/default/images/1778699080529-9631eada-0ad1-428f-b943-d42e5ced5f2c.jpg" },
             { id: 2, title: "BEST SHORT SONG", artist: "Aditya", url: "https://www.image2url.com/r2/default/audio/1778446960362-cacf9cfe-95fa-4724-80cd-79e9e3e38a08.mp3", image: "https://www.image2url.com/r2/default/images/1778699080529-9631eada-0ad1-428f-b943-d42e5ced5f2c.jpg" }
@@ -608,7 +577,6 @@
             stopAllPlayback();
             currentUser = null;
             clearSessionEmail();
-            localStorage.removeItem('adify_user_profile');
             hideLogout(); closeProfile();
             showScreen("loginScreen");
             document.getElementById("login-id").value = "";
@@ -620,6 +588,7 @@
             isRegisterMode = false;
         }
 
+        // ---- LOGIN FUNCTIONS (SAME AS BEFORE) ----
         function togglePass(inputId, icon) { const i=document.getElementById(inputId); i.type=i.type==="password"?"text":"password"; icon.classList.toggle('fa-eye'); icon.classList.toggle('fa-eye-slash'); }
         function showPopup(msg, type) { const p=document.getElementById('status-popup'); p.innerText=msg; p.style.display='block'; p.style.color=type==='success'?'var(--success)':'var(--danger)'; p.style.background=type==='success'?'rgba(46,213,115,0.1)':'rgba(255,71,87,0.1)'; p.style.border=`1px solid ${type==='success'?'rgba(46,213,115,0.3)':'rgba(255,71,87,0.3)'}`; setTimeout(()=>p.style.display='none',3000); }
         function handleStrictLength(el,errId,forceEmail,forcePhone) { let val=el.value; const err=document.getElementById(errId); if(val.length>0){ if(forcePhone||(!forceEmail&&!isNaN(val.charAt(0)))){ if(val.length>10)el.value=val.substring(0,10); err.innerText=el.value.length<10?"Must be exactly 10 digits.":""; }else{ if(val.length>30)el.value=val.substring(0,30); err.innerText=!emailRegex.test(el.value)?"Format: abcde1234@gmail.com":""; } err.style.display=err.innerText?'block':'none'; }else{err.style.display='none';} }
@@ -630,25 +599,7 @@
 
         async function tryFirebaseLogin(lid,lpass) { if(!db) return {error:"FIREBASE NOT CONNECTED"}; try{ if(lid.includes('@')){ const snap=await db.ref('users/'+lid.replace(/\./g,'_')).once('value'); const u=snap.val(); if(!u) return null; if(u.password===lpass) return u; return {error:"WRONG PASSWORD"}; }else{ const snap=await db.ref('users').once('value'); const users=snap.val(); if(!users) return null; for(let k in users){ if(users[k]&&users[k].phone===lid){ if(users[k].password===lpass) return users[k]; return {error:"WRONG PASSWORD"}; } } return null; } }catch(err){ return {error:"FIREBASE ERROR: "+err.message}; } }
 
-        async function finalizeLogin(user) {
-            currentUser=user;
-            saveSessionEmail(user.email);
-            const profileData = {
-                name: user.name,
-                email: user.email,
-                phone: user.phone,
-                gender: user.gender,
-                age: user.age,
-                photo: user.photo
-            };
-            localStorage.setItem('adify_user_profile', JSON.stringify(profileData));
-            await loadUserPlaylists();
-            await loadYoutubeSongs();
-            await loadRecentlyPlayed();
-            updateProfileUI(currentUser);
-            showPopup(`WELCOME BACK, ${currentUser.name.toUpperCase()}`,"success");
-            setTimeout(()=>openHome(),1000);
-        }
+        async function finalizeLogin(user) { currentUser=user; saveSessionEmail(user.email); await loadUserPlaylists(); await loadYoutubeSongs(); await loadRecentlyPlayed(); const cd=await loadUserFromCloud(user.email); if(cd){ currentUser=cd; saveSessionEmail(cd.email); } updateProfileUI(currentUser); showPopup(`WELCOME BACK, ${currentUser.name.toUpperCase()}`,"success"); setTimeout(()=>openHome(),1000); }
 
         async function handleSubmit() {
             if(!isRegisterMode){
@@ -679,6 +630,7 @@
             }
         }
 
+        // ---- HOME / MENU / PLAYLIST (FIXED) ----
         function handleGlobalClick() { document.getElementById('globalPopup').classList.remove('show'); }
         function showToast(m) { const t=document.getElementById('toast'); t.innerText=m; t.style.display='block'; setTimeout(()=>t.style.display='none',2000); }
         function formatTime(s) { if(!s||isNaN(s)||!isFinite(s)) return "0:00"; let m=Math.floor(s/60), sec=Math.floor(s%60); return `${m}:${sec<10?'0':''}${sec}`; }
@@ -696,10 +648,11 @@
             if (ex) {
                 userPlaylists[pName] = userPlaylists[pName].filter(s => s.id !== id);
             } else {
+                // Try to find in allSongs (local) and youtubeSongs (in case it's a YouTube track with an id)
                 let song = allSongs.find(s => s.id === id);
                 if (!song) song = youtubeSongs.find(s => s.id === id);
                 if (song) userPlaylists[pName].push(song);
-                else return;
+                else return; // not found, do nothing
             }
             showToast(ex ? "Removed!" : "Added!");
             saveUserPlaylists();
@@ -781,6 +734,7 @@
 
         function ytSongItemTemplate(s) { const isP = currentYouTubeId === s.videoId; return `<div class="song-item ${isP?'playing-active':''}" onclick="playYouTubeSong('${s.videoId}','${s.title.replace(/'/g,"\\'")}','${s.artist.replace(/'/g,"\\'")}','${s.image}')"><div style="display:flex;align-items:center;flex:1"><div class="img-container"><img src="${s.image}" class="song-img"></div><div style="overflow:hidden;flex:1"><h4>${s.title}</h4><p style="font-size:10px;opacity:0.5">${s.artist}</p></div></div><div class="more-btn" onclick="event.stopPropagation(); openYtMenu(event,'${s.videoId}')">⋮</div></div>`; }
 
+        // ---- YOUTUBE MENU FIX: USE youtubeSongs INSTEAD OF youtubeResults ----
         function openYtMenu(e, videoId) {
             e.stopPropagation();
             const popup = document.getElementById('globalPopup');
@@ -795,11 +749,13 @@
                 userPlaylists[pName] = userPlaylists[pName].filter(s => s.ytId !== videoId);
                 showToast("Removed!");
             } else {
+                // Try to find the song in youtubeSongs (permanent list)
                 const song = youtubeSongs.find(s => s.ytId === videoId);
                 if (song) {
                     userPlaylists[pName].push(song);
                     showToast("Added!");
                 } else {
+                    // fallback: if not found, create minimal object (should not happen)
                     showToast("Song not found");
                     return;
                 }
@@ -809,7 +765,7 @@
             refreshView();
         }
 
-        // ---- PLAYBACK & HISTORY ----
+        // ---- PLAYBACK & HISTORY (FIXED PREV/NEXT) ----
         function addToHistory(track) {
             if (playHistory.length === 0 || playHistory[historyIndex].url !== track.url) {
                 if (historyIndex < playHistory.length - 1) playHistory = playHistory.slice(0, historyIndex + 1);
@@ -833,6 +789,7 @@
                 if (track.ytId) playYouTubeSong(track.ytId, track.title, track.artist, track.image);
                 else playSong(track.title, track.artist, track.url, track.image);
             } else {
+                // auto random
                 const merged = [...allSongs, ...youtubeSongs.filter(yt => !allSongs.some(l => l.url === yt.url))];
                 if (merged.length) {
                     const r = merged[Math.floor(Math.random() * merged.length)];
@@ -845,6 +802,7 @@
         function playSong(t, a, u, i) {
             if (isYouTubePlaying) stopYouTubePlayer();
             isAutoPlayMode = false;
+            currentTrackData = { title: t, artist: a, url: u, image: i };
             currentUrl = u;
             isPlaying = true;
             audio.pause();
@@ -937,12 +895,11 @@
         audio.onloadedmetadata = () => { if(!isYouTubePlaying&&audio.duration&&isFinite(audio.duration)) document.getElementById('totalDuration').innerText=formatTime(audio.duration); };
         audio.onerror = () => { console.error("Audio error",audio.error); isPlaying=false; updatePlayIcon(false); document.getElementById('playerImgArt').classList.remove('music-playing'); };
 
-        // ---- PLAYLIST (selection button removed, but functions made safe) ----
+        // ---- PLAYLIST REMOVE (FIXED & TESTED) ----
         function openPlaylist(n) { activeP=n; document.getElementById('homeView').classList.remove('active'); document.getElementById('playlistView').classList.add('active'); document.getElementById('playlistTitle').innerText=n; document.getElementById('searchToggleBtn').style.display='none'; renderPlaylistSongs(); }
         function resetToHome() { activeP=null; document.getElementById('playlistView').classList.remove('active'); document.getElementById('homeView').classList.add('active'); document.getElementById('searchToggleBtn').style.display='flex'; renderAll(); }
-        // Safe references to modeBtn (which no longer exists)
-        function enableSelectionMode() { isSelectionMode=true; selectedSongs.clear(); const modeBtn=document.getElementById('modeBtn'); if(modeBtn) modeBtn.style.display='none'; document.getElementById('confirmBtn').style.display='block'; document.getElementById('cancelBtn').style.display='block'; renderPlaylistSongs(); }
-        function disableSelectionMode() { isSelectionMode=false; selectedSongs.clear(); const modeBtn=document.getElementById('modeBtn'); if(modeBtn) modeBtn.style.display='block'; document.getElementById('confirmBtn').style.display='none'; document.getElementById('cancelBtn').style.display='none'; renderPlaylistSongs(); }
+        function enableSelectionMode() { isSelectionMode=true; selectedSongs.clear(); document.getElementById('modeBtn').style.display='none'; document.getElementById('confirmBtn').style.display='block'; document.getElementById('cancelBtn').style.display='block'; renderPlaylistSongs(); }
+        function disableSelectionMode() { isSelectionMode=false; selectedSongs.clear(); document.getElementById('modeBtn').style.display='block'; document.getElementById('confirmBtn').style.display='none'; document.getElementById('cancelBtn').style.display='none'; renderPlaylistSongs(); }
         function toggleSelectSong(id) { selectedSongs.has(id)?selectedSongs.delete(id):selectedSongs.add(id); renderPlaylistSongs(); }
         async function confirmRemoval() {
             if (!activeP) return;
@@ -974,26 +931,7 @@
         function openEdit() { document.getElementById('edit-screen').style.display='block'; document.getElementById('edit-name').value=document.getElementById('display-name').innerText; document.getElementById('edit-age').value=parseInt(document.getElementById('p-age').innerText)||22; }
         function closeEdit() { document.getElementById('edit-screen').style.display='none'; }
         function handleImg(e) { const reader=new FileReader(); reader.onload=()=>{ currentPhoto=reader.result; }; if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]); }
-
-        // Instant save + background Firebase sync
-        function saveProfile() {
-            const newName = document.getElementById('edit-name').value;
-            const newAge = document.getElementById('edit-age').value;
-            if (!newName || !newAge) { showToast("Please fill all fields", "error"); return; }
-            currentUser.name = newName;
-            currentUser.age = newAge;
-            currentUser.gender = selectedGenderProfile;
-            if (currentPhoto) currentUser.photo = currentPhoto;
-            updateProfileUI(currentUser);
-            closeEdit();
-            showToast("PROFILE UPDATED SUCCESSFULLY", "success");
-            const profileData = { name: currentUser.name, email: currentUser.email, phone: currentUser.phone, gender: currentUser.gender, age: currentUser.age, photo: currentUser.photo };
-            localStorage.setItem('adify_user_profile', JSON.stringify(profileData));
-            setTimeout(() => {
-                updateProfileInCloud(currentUser.email, { name: newName, age: newAge, gender: selectedGenderProfile, photo: currentUser.photo }).catch(e => console.log("Background sync failed", e));
-            }, 500);
-        }
-
+        async function saveProfile() { const newName=document.getElementById('edit-name').value; const newAge=document.getElementById('edit-age').value; if(newName&&newAge){ currentUser.name=newName; currentUser.age=newAge; currentUser.gender=selectedGenderProfile; if(currentPhoto) currentUser.photo=currentPhoto; await updateProfileInCloud(currentUser.email,{name:newName,age:newAge,gender:selectedGenderProfile,photo:currentUser.photo}); updateProfileUI(currentUser); closeEdit(); showToast("PROFILE UPDATED SUCCESSFULLY"); } }
         function showLogout() { document.getElementById('logout-modal').style.display='flex'; }
         function hideLogout() { document.getElementById('logout-modal').style.display='none'; }
 
@@ -1004,57 +942,37 @@
         let currentUser = null;
         const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
 
+        // ---- BACK BUTTON HANDLER ----
         let isHandlingBack = false, backPressCount = 0, backPressTimer = null;
-        function handleBackButton(e) { /* ... unchanged ... */ }
-        function setupBackButton() { /* ... unchanged ... */ }
+        function handleBackButton(e) { if(isHandlingBack) return; isHandlingBack=true; setTimeout(()=>isHandlingBack=false,300); if(e&&e.preventDefault) e.preventDefault(); if(document.getElementById('searchScreen').classList.contains('active')){ closeSearch(); return; } if(document.getElementById('profileScreen').classList.contains('active')){ closeProfile(); return; } if(document.getElementById('playlistView').classList.contains('active')){ resetToHome(); return; } if(document.getElementById('homeScreen').classList.contains('active')){ backPressCount++; if(backPressCount===1){ showToast("Press back again to exit"); if(backPressTimer)clearTimeout(backPressTimer); backPressTimer=setTimeout(()=>backPressCount=0,2000); }else{ backPressCount=0; if(backPressTimer)clearTimeout(backPressTimer); if(navigator.app&&navigator.app.exitApp) navigator.app.exitApp(); else showToast("Use app switcher to close"); } return; } if(document.getElementById('loginScreen').classList.contains('active')){ if(navigator.app&&navigator.app.exitApp) navigator.app.exitApp(); else showToast("Use app switcher to close"); } }
+        function setupBackButton() { if(window.history&&window.history.pushState) window.history.pushState({page:'app'},'',window.location.href); window.addEventListener('popstate',function(e){ e.preventDefault(); handleBackButton(e); if(window.history&&window.history.pushState) window.history.pushState({page:'app'},'',window.location.href); }); document.addEventListener('backbutton',function(e){ e.preventDefault(); handleBackButton(e); },false); }
 
-        // ========== INSTANT STARTUP (loading overlay hidden immediately) ==========
+        // ---- INIT ----
         window.onload = async function() {
-            // HIDE LOADING OVERLAY RIGHT AWAY
-            document.getElementById('loadingOverlay').classList.add('hidden');
-
             setupMediaSession();
             const savedEmail = getSessionEmail();
             if (savedEmail && db) {
-                // 1. Load cached profile instantly
-                const cachedProfile = localStorage.getItem('adify_user_profile');
-                if (cachedProfile) {
-                    try {
-                        const parsed = JSON.parse(cachedProfile);
-                        currentUser = parsed;
-                        updateProfileUI(currentUser);
-                    } catch(e) {}
-                }
-                // 2. Show home screen immediately
-                document.getElementById('loginScreen').classList.remove('active');
-                document.getElementById('homeScreen').classList.add('active');
-                renderAll();
-                detectDevice();
-                
-                // 3. Background sync with Firebase
-                (async function backgroundSync() {
-                    try {
-                        const user = await loadUserFromCloud(savedEmail);
-                        if (user) {
-                            currentUser = user;
-                            updateProfileUI(currentUser);
-                            const profileData = { name: user.name, email: user.email, phone: user.phone, gender: user.gender, age: user.age, photo: user.photo };
-                            localStorage.setItem('adify_user_profile', JSON.stringify(profileData));
-                        }
-                        await loadUserPlaylists();
-                        await loadYoutubeSongs();
-                        await loadRecentlyPlayed();
-                        renderAll(); // silent update after cloud sync
-                    } catch(e) { console.log("Background sync error", e); }
-                })();
-
-                setupBackButton();
-                return;
+                const user = await loadUserFromCloud(savedEmail);
+                if (user) {
+                    currentUser = user;
+                    await loadUserPlaylists();
+                    await loadYoutubeSongs();
+                    await loadRecentlyPlayed();
+                    updateProfileUI(currentUser);
+                    document.getElementById('loginScreen').classList.remove('active');
+                    document.getElementById('homeScreen').classList.add('active');
+                    renderAll();
+                    detectDevice();
+                    document.getElementById('loadingOverlay').classList.add('hidden');
+                    setTimeout(()=>showPopup("WELCOME BACK, "+(currentUser.name||"USER").toUpperCase(),"success"),500);
+                    setupBackButton();
+                    return;
+                } else { clearSessionEmail(); }
             }
-            // No session, show login
             document.getElementById('homeScreen').classList.remove('active');
             document.getElementById('loginScreen').classList.add('active');
             detectDevice();
+            document.getElementById('loadingOverlay').classList.add('hidden');
             setupBackButton();
         };
     </script>
