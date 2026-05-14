@@ -433,14 +433,14 @@
     </div>
 
     <script>
-        // ==================== FINAL FIXED CODE ====================
+        // ==================== ALL PROBLEMS FIXED ====================
         const YOUTUBE_API_KEY = "AIzaSyBIpUJaQat1LYezbd3DYfteoVOBHAjxems";
         let youtubePlayer = null, isYouTubePlaying = false, currentYouTubeId = null, youtubeResults = [];
         let searchTimeout = null, isPlaying = false, ytDuration = 0, ytCurrentTime = 0, ytTimeInterval = null, ytPlayerReady = false;
         let playHistory = [], historyIndex = -1, recentlyPlayed = [];
-        // Flag to know if user manually paused (to avoid auto-resume)
-        let userPaused = false;
+        let userPaused = false; // true if user manually paused
 
+        // ---- MEDIA SESSION ----
         function setupMediaSession() {
             if ('mediaSession' in navigator) {
                 navigator.mediaSession.setActionHandler('play', () => togglePlay());
@@ -467,22 +467,16 @@
             }
         }
 
-        // ---- BACKGROUND PLAYBACK: STRONG AUTO-RESUME ----
+        // ---- BACKGROUND PLAYBACK AUTO-RESUME ----
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden && isPlaying && !isYouTubePlaying) {
-                if (audio.paused && audio.src) {
-                    audio.play().catch(() => {});
-                }
+                if (audio.paused && audio.src) audio.play().catch(() => {});
             }
         });
-
-        // Listen for unexpected pauses (browser forced pause)
         audio.addEventListener('pause', () => {
             if (isPlaying && !userPaused && !isYouTubePlaying && audio.src) {
                 setTimeout(() => {
-                    if (isPlaying && !userPaused && audio.paused && audio.src) {
-                        audio.play().catch(() => {});
-                    }
+                    if (isPlaying && !userPaused && audio.paused && audio.src) audio.play().catch(() => {});
                 }, 300);
             }
         });
@@ -505,7 +499,7 @@
             return subPath ? `users/${key}/${subPath}` : `users/${key}`;
         }
 
-        // ---- SESSION (localStorage) ----
+        // ---- SESSION ----
         function saveSessionEmail(email) { localStorage.setItem('adify_session_email', email); }
         function getSessionEmail() { return localStorage.getItem('adify_session_email'); }
         function clearSessionEmail() { localStorage.removeItem('adify_session_email'); }
@@ -593,7 +587,7 @@
             isRegisterMode = false;
         }
 
-        // ---- LOGIN FUNCTIONS ----
+        // ---- LOGIN FUNCTIONS (unchanged) ----
         function togglePass(inputId, icon) { const i=document.getElementById(inputId); i.type=i.type==="password"?"text":"password"; icon.classList.toggle('fa-eye'); icon.classList.toggle('fa-eye-slash'); }
         function showPopup(msg, type) { const p=document.getElementById('status-popup'); p.innerText=msg; p.style.display='block'; p.style.color=type==='success'?'var(--success)':'var(--danger)'; p.style.background=type==='success'?'rgba(46,213,115,0.1)':'rgba(255,71,87,0.1)'; p.style.border=`1px solid ${type==='success'?'rgba(46,213,115,0.3)':'rgba(255,71,87,0.3)'}`; setTimeout(()=>p.style.display='none',3000); }
         function handleStrictLength(el,errId,forceEmail,forcePhone) { let val=el.value; const err=document.getElementById(errId); if(val.length>0){ if(forcePhone||(!forceEmail&&!isNaN(val.charAt(0)))){ if(val.length>10)el.value=val.substring(0,10); err.innerText=el.value.length<10?"Must be exactly 10 digits.":""; }else{ if(val.length>30)el.value=val.substring(0,30); err.innerText=!emailRegex.test(el.value)?"Format: abcde1234@gmail.com":""; } err.style.display=err.innerText?'block':'none'; }else{err.style.display='none';} }
@@ -666,11 +660,15 @@
 
         function songItemTemplate(s) {
             const isP = currentUrl === s.url || (s.ytId && currentYouTubeId === s.ytId);
-            const isS = selectedSongs.has(s.id);
+            const isS = selectedSongs.has(String(s.id)); // convert to string for consistency
             let clickAction;
-            if (isSelectionMode) clickAction = `toggleSelectSong('${s.id}')`;  // FIX: quotes around ID
-            else if (s.ytId) clickAction = `playTrackFromUI('${s.ytId}','${s.title.replace(/'/g,"\\'")}','${s.artist.replace(/'/g,"\\'")}','${s.image}','youtube')`;
-            else clickAction = `playTrackFromUI('${s.id}','${s.title.replace(/'/g,"\\'")}','${s.artist.replace(/'/g,"\\'")}','${s.image}','local')`;
+            if (isSelectionMode) {
+                clickAction = `toggleSelectSong('${s.id}')`; // quote the ID
+            } else if (s.ytId) {
+                clickAction = `playTrackFromUI('${s.ytId}','${s.title.replace(/'/g,"\\'")}','${s.artist.replace(/'/g,"\\'")}','${s.image}','youtube')`;
+            } else {
+                clickAction = `playTrackFromUI('${s.id}','${s.title.replace(/'/g,"\\'")}','${s.artist.replace(/'/g,"\\'")}','${s.image}','local')`;
+            }
             const moreBtn = !isSelectionMode
                 ? (s.ytId
                     ? `<div class="more-btn" onclick="event.stopPropagation(); openYtMenu(event,'${s.ytId}')">⋮</div>`
@@ -700,7 +698,7 @@
             } catch(err) { console.error("renderAll error", err); }
         }
 
-        // ---- SEARCH SCREEN ----
+        // ---- SEARCH SCREEN (unchanged) ----
         function openSearchScreen(e) { if(e)e.stopPropagation(); showScreen('searchScreen'); renderRecentSearches(); setTimeout(()=>document.getElementById('searchPageInput').focus(),100); }
         function closeSearch() { if(searchTimeout)clearTimeout(searchTimeout); document.getElementById('searchPageInput').value=''; document.getElementById('searchClearBtn').style.display='none'; document.getElementById('recentSearchesSection').style.display='block'; document.getElementById('searchResultsSection').style.display='none'; document.getElementById('ytSearchResultsSection').style.display='none'; showScreen('homeScreen'); renderAll(); }
         function clearSearchInput() { document.getElementById('searchPageInput').value=''; document.getElementById('searchClearBtn').style.display='none'; document.getElementById('recentSearchesSection').style.display='block'; document.getElementById('searchResultsSection').style.display='none'; document.getElementById('ytSearchResultsSection').style.display='none'; document.getElementById('searchPageInput').focus(); }
@@ -752,6 +750,7 @@
                 userPlaylists[pName] = userPlaylists[pName].filter(s => s.ytId !== videoId);
                 showToast("Removed!");
             } else {
+                // Use the permanent song object from youtubeSongs (so the id is consistent)
                 const song = youtubeSongs.find(s => s.ytId === videoId);
                 if (song) {
                     userPlaylists[pName].push(song);
@@ -805,7 +804,7 @@
             currentTrackData = { title: t, artist: a, url: u, image: i };
             currentUrl = u;
             isPlaying = true;
-            userPaused = false; // reset flag
+            userPaused = false;
             audio.pause();
             audio.src = u;
             audio.load();
@@ -874,7 +873,7 @@
             refreshView();
         }
 
-        // ---- YOUTUBE PLAYER ----
+        // ---- YOUTUBE PLAYER (unchanged) ----
         function loadYouTubePlayer(videoId) { const w=document.getElementById('yt-player-wrapper'); w.innerHTML=''; if(!window.YT||!YT.Player){ const t=document.createElement('script'); t.src="https://www.youtube.com/iframe_api"; t.onload=function(){window._pendingVideoId=videoId;}; document.head.appendChild(t); }else createYouTubePlayer(videoId); }
         window.onYouTubeIframeAPIReady = function() { if(window._pendingVideoId){ createYouTubePlayer(window._pendingVideoId); window._pendingVideoId=null; } };
         function createYouTubePlayer(videoId) { const w=document.getElementById('yt-player-wrapper'); w.innerHTML='<div id="youtube-player"></div>'; try{ youtubePlayer = new YT.Player('youtube-player',{ height:'1', width:'1', videoId:videoId, playerVars:{autoplay:1,controls:0,disablekb:1,fs:0,modestbranding:1,rel:0,showinfo:0,iv_load_policy:3,playsinline:1}, events:{ onReady:function(e){ ytPlayerReady=true; e.target.playVideo(); e.target.unMute(); startYtTimeUpdate(); }, onStateChange:function(e){ if(e.data===YT.PlayerState.ENDED){ if(isAutoPlayMode) playNextYoutubeAuto(); else nextTrack(); } if(e.data===YT.PlayerState.PLAYING){ isPlaying=true; updatePlayIcon(true); document.getElementById('playerImgArt').classList.add('music-playing'); try{ ytDuration=youtubePlayer.getDuration(); document.getElementById('totalDuration').innerText=formatTime(ytDuration); }catch(e){} } else if(e.data===YT.PlayerState.PAUSED){ isPlaying=false; updatePlayIcon(false); document.getElementById('playerImgArt').classList.remove('music-playing'); } }, onError:function(e){ console.error("YouTube error",e.data); showPopup("PLAYBACK ERROR","error"); } } }); }catch(e){ console.error("Player init failed",e); } }
@@ -892,11 +891,8 @@
         function togglePlay() {
             if(isYouTubePlaying&&youtubePlayer&&ytPlayerReady){
                 try{
-                    if(isPlaying){
-                        youtubePlayer.pauseVideo(); isPlaying=false; userPaused = true; updatePlayIcon(false); document.getElementById('playerImgArt').classList.remove('music-playing');
-                    } else {
-                        youtubePlayer.playVideo(); isPlaying=true; userPaused = false; updatePlayIcon(true); document.getElementById('playerImgArt').classList.add('music-playing');
-                    }
+                    if(isPlaying){ youtubePlayer.pauseVideo(); isPlaying=false; userPaused=true; updatePlayIcon(false); document.getElementById('playerImgArt').classList.remove('music-playing'); }
+                    else { youtubePlayer.playVideo(); isPlaying=true; userPaused=false; updatePlayIcon(true); document.getElementById('playerImgArt').classList.add('music-playing'); }
                 }catch(e){}
                 if('mediaSession' in navigator) navigator.mediaSession.playbackState=isPlaying?'playing':'paused';
                 return;
@@ -916,7 +912,7 @@
         audio.onloadedmetadata = () => { if(!isYouTubePlaying&&audio.duration&&isFinite(audio.duration)) document.getElementById('totalDuration').innerText=formatTime(audio.duration); };
         audio.onerror = () => { console.error("Audio error",audio.error); isPlaying=false; updatePlayIcon(false); document.getElementById('playerImgArt').classList.remove('music-playing'); };
 
-        // ---- PLAYLIST REMOVE (FIXED) ----
+        // ---- PLAYLIST REMOVE (FIXED FOR ALL) ----
         function openPlaylist(n) { activeP=n; document.getElementById('homeView').classList.remove('active'); document.getElementById('playlistView').classList.add('active'); document.getElementById('playlistTitle').innerText=n; document.getElementById('searchToggleBtn').style.display='none'; renderPlaylistSongs(); }
         function resetToHome() { activeP=null; document.getElementById('playlistView').classList.remove('active'); document.getElementById('homeView').classList.add('active'); document.getElementById('searchToggleBtn').style.display='flex'; renderAll(); }
         function enableSelectionMode() { isSelectionMode=true; selectedSongs.clear(); document.getElementById('modeBtn').style.display='none'; document.getElementById('confirmBtn').style.display='block'; document.getElementById('cancelBtn').style.display='block'; renderPlaylistSongs(); }
@@ -924,7 +920,8 @@
         function toggleSelectSong(id) { selectedSongs.has(id)?selectedSongs.delete(id):selectedSongs.add(id); renderPlaylistSongs(); }
         async function confirmRemoval() {
             if (!activeP) return;
-            userPlaylists[activeP] = userPlaylists[activeP].filter(s => !selectedSongs.has(s.id));
+            // Convert all IDs to strings for consistent comparison
+            userPlaylists[activeP] = userPlaylists[activeP].filter(s => !selectedSongs.has(String(s.id)));
             await saveUserPlaylists();
             showToast("Songs Removed!");
             disableSelectionMode();
@@ -935,7 +932,7 @@
         }
         function refreshView() { if(activeP) renderPlaylistSongs(); else renderAll(); }
 
-        // ---- PROFILE ----
+        // ---- PROFILE (unchanged) ----
         function updateProfileUI(user) {
             document.getElementById("display-name").innerText=user.name||"Adify User";
             document.getElementById("p-gender").innerText=user.gender||"Male";
