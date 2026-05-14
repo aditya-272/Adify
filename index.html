@@ -162,8 +162,16 @@
         #yt-player-wrapper { position: fixed; bottom: 0; left: 0; width: 100%; height: 1px; z-index: 1; overflow: hidden; opacity: 0; pointer-events: none; }
         #yt-player-wrapper iframe { width: 100%; height: 200px; border: none; }
 
-        #loadingOverlay { position: fixed; inset: 0; background: radial-gradient(circle at top right, #001f3f, #000814); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 99999; transition: opacity 0.3s ease; }
-        #loadingOverlay.hidden { opacity: 0; pointer-events: none; }
+        #loadingOverlay {
+            position: fixed; inset: 0; background: radial-gradient(circle at top right, #001f3f, #000814);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 99999;
+            animation: hideLoadingOverlay 0s 4s forwards;
+        }
+        @keyframes hideLoadingOverlay {
+            to { opacity: 0; pointer-events: none; visibility: hidden; }
+        }
+        #loadingOverlay.hidden { opacity: 0; pointer-events: none; visibility: hidden; }
         .loading-spinner { width: 40px; height: 40px; border: 3px solid rgba(0,191,255,0.2); border-top-color: var(--sky-blue); border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin{to{transform:rotate(360deg)}}
         .loading-text{color:var(--sky-blue);margin-top:15px;font-size:12px;letter-spacing:2px;text-transform:uppercase}
@@ -175,11 +183,14 @@
 </head>
 <body onclick="handleGlobalClick(event)">
 
-    <!-- FALLBACK: force-hide loading after 4 seconds no matter what -->
+    <!-- FALLBACK: force-hide after 3 seconds -->
     <script>
         setTimeout(function() {
-            document.getElementById('loadingOverlay').classList.add('hidden');
-        }, 4000);
+            var loader = document.getElementById('loadingOverlay');
+            if (loader && !loader.classList.contains('hidden')) {
+                loader.classList.add('hidden');
+            }
+        }, 3000);
     </script>
 
     <div id="loadingOverlay">
@@ -603,36 +614,112 @@
         function setGender(el,val) { document.querySelectorAll('#reg-fields .gender-opt').forEach(o=>o.classList.remove('active')); el.classList.add('active'); selectedGender=val; }
         function toggleAuth(isReg) { isRegisterMode=isReg; document.getElementById('reg-fields').style.display=isReg?'block':'none'; document.getElementById('login-section').style.display=isReg?'none':'block'; document.getElementById('main-btn').innerText=isReg?"SIGN UP":"LOG IN"; document.getElementById('switch-text').innerHTML=isReg?'Already a member? <span onclick="toggleAuth(false)">Log In</span>':'New here? <span onclick="toggleAuth(true)">Create Account</span>'; }
 
-        async function tryFirebaseLogin(lid,lpass) { if(!db) return {error:"FIREBASE NOT CONNECTED"}; try{ if(lid.includes('@')){ const snap=await db.ref('users/'+lid.replace(/\./g,'_')).once('value'); const u=snap.val(); if(!u) return null; if(u.password===lpass) return u; return {error:"WRONG PASSWORD"}; }else{ const snap=await db.ref('users').once('value'); const users=snap.val(); if(!users) return null; for(let k in users){ if(users[k]&&users[k].phone===lid){ if(users[k].password===lpass) return users[k]; return {error:"WRONG PASSWORD"}; } } return null; } }catch(err){ return {error:"FIREBASE ERROR: "+err.message}; } }
+        // ---- IMPROVED LOGIN WITH LOCAL FALLBACK ----
+        async function tryFirebaseLogin(lid, lpass) {
+            console.log("Firebase login attempt for:", lid);
+            if (!db) {
+                console.warn("Firebase not connected, trying local storage fallback");
+                const localUser = localStorage.getItem(lid);
+                if (localUser) {
+                    try {
+                        const user = JSON.parse(localUser);
+                        if (user && user.password === lpass) return user;
+                    } catch(e) {}
+                }
+                return { error: "FIREBASE NOT CONNECTED" };
+            }
+            try {
+                if (lid.includes('@')) {
+                    const snap = await db.ref('users/' + lid.replace(/\./g, '_')).once('value');
+                    const u = snap.val();
+                    console.log("Firebase user found:", u ? "yes" : "no");
+                    if (!u) return null;
+                    if (u.password === lpass) return u;
+                    return { error: "WRONG PASSWORD" };
+                } else {
+                    const snap = await db.ref('users').once('value');
+                    const users = snap.val();
+                    if (!users) return null;
+                    for (let k in users) {
+                        if (users[k] && users[k].phone === lid) {
+                            if (users[k].password === lpass) return users[k];
+                            return { error: "WRONG PASSWORD" };
+                        }
+                    }
+                    return null;
+                }
+            } catch(err) {
+                console.error("Firebase error:", err);
+                return { error: "FIREBASE ERROR: " + err.message };
+            }
+        }
 
-        async function finalizeLogin(user) { currentUser=user; saveSessionEmail(user.email); await loadUserPlaylists(); await loadYoutubeSongs(); await loadRecentlyPlayed(); const cd=await loadUserFromCloud(user.email); if(cd){ currentUser=cd; saveSessionEmail(cd.email); } updateProfileUI(currentUser); showPopup(`WELCOME BACK, ${currentUser.name.toUpperCase()}`,"success"); setTimeout(()=>openHome(),1000); }
+        async function finalizeLogin(user) {
+            console.log("Login successful for:", user.email);
+            currentUser = user;
+            saveSessionEmail(user.email);
+            try {
+                await loadUserPlaylists();
+                await loadYoutubeSongs();
+                await loadRecentlyPlayed();
+            } catch(e) {}
+            try {
+                const cd = await loadUserFromCloud(user.email);
+                if (cd) { currentUser = cd; saveSessionEmail(cd.email); }
+            } catch(e) {}
+            updateProfileUI(currentUser);
+            showPopup(`WELCOME BACK, ${currentUser.name.toUpperCase()}`, "success");
+            setTimeout(() => openHome(), 1000);
+        }
 
         async function handleSubmit() {
-            if(!isRegisterMode){
-                const lid=document.getElementById('login-id').value.toLowerCase().trim();
-                const lpass=document.getElementById('login-pass').value;
-                if(lid==="1"&&lpass==="1"){ currentUser={name:'Master',email:'master@adify.com',phone:'0000000000',gender:'Male',age:21}; saveSessionEmail(currentUser.email); setTimeout(()=>openHome(),1000); return; }
-                showPopup("VERIFYING USER...","success");
-                const res=await tryFirebaseLogin(lid,lpass);
-                if(res===null) showPopup("USER NOT FOUND","error");
-                else if(res.error) showPopup(res.error,"error");
-                else await finalizeLogin(res);
-            }else{
-                const name=document.getElementById('full-name').value;
-                const emailInput=document.getElementById('reg-email').value;
-                const email=emailInput.toLowerCase();
-                const phone=document.getElementById('reg-phone').value;
-                const pass=document.getElementById('reg-pass').value;
-                const age=document.getElementById('reg-age').value;
-                if(!name||!emailRegex.test(emailInput)||phone.length!==10||pass.length<8||age<18){ showPopup("PLEASE FIX ALL ERRORS","error"); return; }
-                const existing=await loadUserFromCloud(email);
-                if(existing){ showPopup("EMAIL ALREADY REGISTERED","error"); return; }
-                const pc=await getPhoneCount(phone);
-                if(pc>=3){ showPopup("MAX 3 ACCOUNTS PER NUMBER","error"); return; }
-                const userData={name,email,phone,password:pass,gender:selectedGender,age,photo:null};
-                showPopup("SYNCING TO CLOUD...","success");
-                try{ await saveUserToCloud(userData); await incrementPhoneCount(phone); showPopup("REGISTERED SUCCESSFULLY","success"); }catch(e){ showPopup("REGISTERED - CLOUD SYNC FAILED","error"); }
-                setTimeout(()=>{ toggleAuth(false); showPopup("PLEASE LOG IN WITH YOUR DETAILS","success"); },1500);
+            if (!isRegisterMode) {
+                const lid = document.getElementById('login-id').value.toLowerCase().trim();
+                const lpass = document.getElementById('login-pass').value;
+                if (lid === "1" && lpass === "1") {
+                    console.log("Master login");
+                    currentUser = { name: 'Master', email: 'master@adify.com', phone: '0000000000', gender: 'Male', age: 21 };
+                    saveSessionEmail(currentUser.email);
+                    showPopup("MASTER LOGIN SUCCESS", "success");
+                    setTimeout(() => openHome(), 1000);
+                    return;
+                }
+                showPopup("VERIFYING USER...", "success");
+                const result = await tryFirebaseLogin(lid, lpass);
+                console.log("Login result:", result);
+                if (result === null) {
+                    showPopup("USER NOT FOUND", "error");
+                } else if (result.error) {
+                    showPopup(result.error, "error");
+                } else {
+                    await finalizeLogin(result);
+                }
+            } else {
+                const name = document.getElementById('full-name').value;
+                const emailInput = document.getElementById('reg-email').value;
+                const email = emailInput.toLowerCase();
+                const phone = document.getElementById('reg-phone').value;
+                const pass = document.getElementById('reg-pass').value;
+                const age = document.getElementById('reg-age').value;
+                if (!name || !emailRegex.test(emailInput) || phone.length !== 10 || pass.length < 8 || age < 18) {
+                    showPopup("PLEASE FIX ALL ERRORS", "error"); return;
+                }
+                const existing = await loadUserFromCloud(email);
+                if (existing) { showPopup("EMAIL ALREADY REGISTERED", "error"); return; }
+                const pc = await getPhoneCount(phone);
+                if (pc >= 3) { showPopup("MAX 3 ACCOUNTS PER NUMBER", "error"); return; }
+                const userData = { name, email, phone, password: pass, gender: selectedGender, age, photo: null };
+                showPopup("SYNCING TO CLOUD...", "success");
+                try {
+                    await saveUserToCloud(userData);
+                    await incrementPhoneCount(phone);
+                    // Also save locally for fallback
+                    localStorage.setItem(email, JSON.stringify(userData));
+                    showPopup("REGISTERED SUCCESSFULLY", "success");
+                } catch(e) {
+                    showPopup("REGISTERED - CLOUD SYNC FAILED", "error");
+                }
+                setTimeout(() => { toggleAuth(false); showPopup("PLEASE LOG IN WITH YOUR DETAILS", "success"); }, 1500);
             }
         }
 
@@ -970,7 +1057,7 @@
         function handleBackButton(e) { if(isHandlingBack) return; isHandlingBack=true; setTimeout(()=>isHandlingBack=false,300); if(e&&e.preventDefault) e.preventDefault(); if(document.getElementById('searchScreen').classList.contains('active')){ closeSearch(); return; } if(document.getElementById('profileScreen').classList.contains('active')){ closeProfile(); return; } if(document.getElementById('playlistView').classList.contains('active')){ resetToHome(); return; } if(document.getElementById('homeScreen').classList.contains('active')){ backPressCount++; if(backPressCount===1){ showToast("Press back again to exit"); if(backPressTimer)clearTimeout(backPressTimer); backPressTimer=setTimeout(()=>backPressCount=0,2000); }else{ backPressCount=0; if(backPressTimer)clearTimeout(backPressTimer); if(navigator.app&&navigator.app.exitApp) navigator.app.exitApp(); else showToast("Use app switcher to close"); } return; } if(document.getElementById('loginScreen').classList.contains('active')){ if(navigator.app&&navigator.app.exitApp) navigator.app.exitApp(); else showToast("Use app switcher to close"); } }
         function setupBackButton() { if(window.history&&window.history.pushState) window.history.pushState({page:'app'},'',window.location.href); window.addEventListener('popstate',function(e){ e.preventDefault(); handleBackButton(e); if(window.history&&window.history.pushState) window.history.pushState({page:'app'},'',window.location.href); }); document.addEventListener('backbutton',function(e){ e.preventDefault(); handleBackButton(e); },false); }
 
-        // INIT - Guaranteed to hide loading
+        // INIT
         async function initApp() {
             console.log("App init started");
             try {
