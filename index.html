@@ -433,7 +433,7 @@
     </div>
 
     <script>
-        // ==================== ALL PROBLEMS FIXED ====================
+        // ==================== FINAL FIXED & STABLE CODE ====================
         const YOUTUBE_API_KEY = "AIzaSyBIpUJaQat1LYezbd3DYfteoVOBHAjxems";
         let youtubePlayer = null, isYouTubePlaying = false, currentYouTubeId = null, youtubeResults = [];
         let searchTimeout = null, isPlaying = false, ytDuration = 0, ytCurrentTime = 0, ytTimeInterval = null, ytPlayerReady = false;
@@ -587,7 +587,7 @@
             isRegisterMode = false;
         }
 
-        // ---- LOGIN FUNCTIONS (unchanged) ----
+        // ---- LOGIN FUNCTIONS ----
         function togglePass(inputId, icon) { const i=document.getElementById(inputId); i.type=i.type==="password"?"text":"password"; icon.classList.toggle('fa-eye'); icon.classList.toggle('fa-eye-slash'); }
         function showPopup(msg, type) { const p=document.getElementById('status-popup'); p.innerText=msg; p.style.display='block'; p.style.color=type==='success'?'var(--success)':'var(--danger)'; p.style.background=type==='success'?'rgba(46,213,115,0.1)':'rgba(255,71,87,0.1)'; p.style.border=`1px solid ${type==='success'?'rgba(46,213,115,0.3)':'rgba(255,71,87,0.3)'}`; setTimeout(()=>p.style.display='none',3000); }
         function handleStrictLength(el,errId,forceEmail,forcePhone) { let val=el.value; const err=document.getElementById(errId); if(val.length>0){ if(forcePhone||(!forceEmail&&!isNaN(val.charAt(0)))){ if(val.length>10)el.value=val.substring(0,10); err.innerText=el.value.length<10?"Must be exactly 10 digits.":""; }else{ if(val.length>30)el.value=val.substring(0,30); err.innerText=!emailRegex.test(el.value)?"Format: abcde1234@gmail.com":""; } err.style.display=err.innerText?'block':'none'; }else{err.style.display='none';} }
@@ -660,10 +660,10 @@
 
         function songItemTemplate(s) {
             const isP = currentUrl === s.url || (s.ytId && currentYouTubeId === s.ytId);
-            const isS = selectedSongs.has(String(s.id)); // convert to string for consistency
+            const isS = selectedSongs.has(String(s.id)); // ensure string comparison
             let clickAction;
             if (isSelectionMode) {
-                clickAction = `toggleSelectSong('${s.id}')`; // quote the ID
+                clickAction = `toggleSelectSong('${s.id}')`; // quoted
             } else if (s.ytId) {
                 clickAction = `playTrackFromUI('${s.ytId}','${s.title.replace(/'/g,"\\'")}','${s.artist.replace(/'/g,"\\'")}','${s.image}','youtube')`;
             } else {
@@ -698,7 +698,7 @@
             } catch(err) { console.error("renderAll error", err); }
         }
 
-        // ---- SEARCH SCREEN (unchanged) ----
+        // ---- SEARCH SCREEN ----
         function openSearchScreen(e) { if(e)e.stopPropagation(); showScreen('searchScreen'); renderRecentSearches(); setTimeout(()=>document.getElementById('searchPageInput').focus(),100); }
         function closeSearch() { if(searchTimeout)clearTimeout(searchTimeout); document.getElementById('searchPageInput').value=''; document.getElementById('searchClearBtn').style.display='none'; document.getElementById('recentSearchesSection').style.display='block'; document.getElementById('searchResultsSection').style.display='none'; document.getElementById('ytSearchResultsSection').style.display='none'; showScreen('homeScreen'); renderAll(); }
         function clearSearchInput() { document.getElementById('searchPageInput').value=''; document.getElementById('searchClearBtn').style.display='none'; document.getElementById('recentSearchesSection').style.display='block'; document.getElementById('searchResultsSection').style.display='none'; document.getElementById('ytSearchResultsSection').style.display='none'; document.getElementById('searchPageInput').focus(); }
@@ -750,7 +750,6 @@
                 userPlaylists[pName] = userPlaylists[pName].filter(s => s.ytId !== videoId);
                 showToast("Removed!");
             } else {
-                // Use the permanent song object from youtubeSongs (so the id is consistent)
                 const song = youtubeSongs.find(s => s.ytId === videoId);
                 if (song) {
                     userPlaylists[pName].push(song);
@@ -873,7 +872,7 @@
             refreshView();
         }
 
-        // ---- YOUTUBE PLAYER (unchanged) ----
+        // ---- YOUTUBE PLAYER ----
         function loadYouTubePlayer(videoId) { const w=document.getElementById('yt-player-wrapper'); w.innerHTML=''; if(!window.YT||!YT.Player){ const t=document.createElement('script'); t.src="https://www.youtube.com/iframe_api"; t.onload=function(){window._pendingVideoId=videoId;}; document.head.appendChild(t); }else createYouTubePlayer(videoId); }
         window.onYouTubeIframeAPIReady = function() { if(window._pendingVideoId){ createYouTubePlayer(window._pendingVideoId); window._pendingVideoId=null; } };
         function createYouTubePlayer(videoId) { const w=document.getElementById('yt-player-wrapper'); w.innerHTML='<div id="youtube-player"></div>'; try{ youtubePlayer = new YT.Player('youtube-player',{ height:'1', width:'1', videoId:videoId, playerVars:{autoplay:1,controls:0,disablekb:1,fs:0,modestbranding:1,rel:0,showinfo:0,iv_load_policy:3,playsinline:1}, events:{ onReady:function(e){ ytPlayerReady=true; e.target.playVideo(); e.target.unMute(); startYtTimeUpdate(); }, onStateChange:function(e){ if(e.data===YT.PlayerState.ENDED){ if(isAutoPlayMode) playNextYoutubeAuto(); else nextTrack(); } if(e.data===YT.PlayerState.PLAYING){ isPlaying=true; updatePlayIcon(true); document.getElementById('playerImgArt').classList.add('music-playing'); try{ ytDuration=youtubePlayer.getDuration(); document.getElementById('totalDuration').innerText=formatTime(ytDuration); }catch(e){} } else if(e.data===YT.PlayerState.PAUSED){ isPlaying=false; updatePlayIcon(false); document.getElementById('playerImgArt').classList.remove('music-playing'); } }, onError:function(e){ console.error("YouTube error",e.data); showPopup("PLAYBACK ERROR","error"); } } }); }catch(e){ console.error("Player init failed",e); } }
@@ -920,7 +919,7 @@
         function toggleSelectSong(id) { selectedSongs.has(id)?selectedSongs.delete(id):selectedSongs.add(id); renderPlaylistSongs(); }
         async function confirmRemoval() {
             if (!activeP) return;
-            // Convert all IDs to strings for consistent comparison
+            // Compare as strings for consistency
             userPlaylists[activeP] = userPlaylists[activeP].filter(s => !selectedSongs.has(String(s.id)));
             await saveUserPlaylists();
             showToast("Songs Removed!");
@@ -932,7 +931,7 @@
         }
         function refreshView() { if(activeP) renderPlaylistSongs(); else renderAll(); }
 
-        // ---- PROFILE (unchanged) ----
+        // ---- PROFILE ----
         function updateProfileUI(user) {
             document.getElementById("display-name").innerText=user.name||"Adify User";
             document.getElementById("p-gender").innerText=user.gender||"Male";
@@ -965,34 +964,40 @@
         function handleBackButton(e) { if(isHandlingBack) return; isHandlingBack=true; setTimeout(()=>isHandlingBack=false,300); if(e&&e.preventDefault) e.preventDefault(); if(document.getElementById('searchScreen').classList.contains('active')){ closeSearch(); return; } if(document.getElementById('profileScreen').classList.contains('active')){ closeProfile(); return; } if(document.getElementById('playlistView').classList.contains('active')){ resetToHome(); return; } if(document.getElementById('homeScreen').classList.contains('active')){ backPressCount++; if(backPressCount===1){ showToast("Press back again to exit"); if(backPressTimer)clearTimeout(backPressTimer); backPressTimer=setTimeout(()=>backPressCount=0,2000); }else{ backPressCount=0; if(backPressTimer)clearTimeout(backPressTimer); if(navigator.app&&navigator.app.exitApp) navigator.app.exitApp(); else showToast("Use app switcher to close"); } return; } if(document.getElementById('loginScreen').classList.contains('active')){ if(navigator.app&&navigator.app.exitApp) navigator.app.exitApp(); else showToast("Use app switcher to close"); } }
         function setupBackButton() { if(window.history&&window.history.pushState) window.history.pushState({page:'app'},'',window.location.href); window.addEventListener('popstate',function(e){ e.preventDefault(); handleBackButton(e); if(window.history&&window.history.pushState) window.history.pushState({page:'app'},'',window.location.href); }); document.addEventListener('backbutton',function(e){ e.preventDefault(); handleBackButton(e); },false); }
 
-        // ---- INIT ----
-        window.onload = async function() {
-            setupMediaSession();
-            const savedEmail = getSessionEmail();
-            if (savedEmail && db) {
-                const user = await loadUserFromCloud(savedEmail);
-                if (user) {
-                    currentUser = user;
-                    await loadUserPlaylists();
-                    await loadYoutubeSongs();
-                    await loadRecentlyPlayed();
-                    updateProfileUI(currentUser);
-                    document.getElementById('loginScreen').classList.remove('active');
-                    document.getElementById('homeScreen').classList.add('active');
-                    renderAll();
-                    detectDevice();
-                    document.getElementById('loadingOverlay').classList.add('hidden');
-                    setTimeout(()=>showPopup("WELCOME BACK, "+(currentUser.name||"USER").toUpperCase(),"success"),500);
-                    setupBackButton();
-                    return;
-                } else { clearSessionEmail(); }
+        // ---- INIT (NO STUCK LOADING) ----
+        async function initApp() {
+            try {
+                setupMediaSession();
+                const savedEmail = getSessionEmail();
+                if (savedEmail && db) {
+                    const user = await loadUserFromCloud(savedEmail);
+                    if (user) {
+                        currentUser = user;
+                        await loadUserPlaylists();
+                        await loadYoutubeSongs();
+                        await loadRecentlyPlayed();
+                        updateProfileUI(currentUser);
+                        showScreen('homeScreen');
+                        renderAll();
+                        detectDevice();
+                    } else {
+                        clearSessionEmail();
+                        showScreen('loginScreen');
+                    }
+                } else {
+                    showScreen('loginScreen');
+                }
+            } catch(e) {
+                console.error("Init error:", e);
+                showScreen('loginScreen');
+            } finally {
+                // Always hide loading overlay
+                document.getElementById('loadingOverlay').classList.add('hidden');
+                setupBackButton();
             }
-            document.getElementById('homeScreen').classList.remove('active');
-            document.getElementById('loginScreen').classList.add('active');
-            detectDevice();
-            document.getElementById('loadingOverlay').classList.add('hidden');
-            setupBackButton();
-        };
+        }
+
+        window.onload = initApp;
     </script>
 </body>
 </html>
