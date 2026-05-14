@@ -175,6 +175,13 @@
 </head>
 <body onclick="handleGlobalClick(event)">
 
+    <!-- FALLBACK: force-hide loading after 4 seconds no matter what -->
+    <script>
+        setTimeout(function() {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+        }, 4000);
+    </script>
+
     <div id="loadingOverlay">
         <div class="loading-spinner"></div>
         <div class="loading-text">Loading...</div>
@@ -965,6 +972,7 @@
 
         // INIT - Guaranteed to hide loading
         async function initApp() {
+            console.log("App init started");
             try {
                 setupMediaSession();
                 const savedEmail = getSessionEmail();
@@ -990,6 +998,7 @@
                 console.error("Init error:", e);
                 showScreen('loginScreen');
             } finally {
+                console.log("Hiding loading overlay");
                 document.getElementById('loadingOverlay').classList.add('hidden');
                 setupBackButton();
             }
