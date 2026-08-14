@@ -188,7 +188,7 @@
 
     <!-- Global Popup (always visible) -->
     <div class="menu-dropdown" id="globalPopup" onclick="event.stopPropagation()">
-        <div class="menu-header">ADD TO PLAYLIST</div>
+        <div class="menu-header" id="popupHeader">ADD TO PLAYLIST</div>
         <div id="playlistOptions"></div>
     </div>
 
@@ -278,11 +278,6 @@
 
         <div id="playlistView" class="view">
             <h2 id="playlistTitle" style="font-size:24px; margin-bottom:15px; color:var(--primary);"></h2>
-            <div class="playlist-actions">
-                <button id="modeBtn" class="action-btn btn-remove-mode" onclick="enableSelectionMode()">Select songs to remove</button>
-                <button id="confirmBtn" class="action-btn" style="display:none; background:var(--success); color:white; border:none;" onclick="confirmRemoval()">Confirm Remove Selected</button>
-                <button id="cancelBtn" class="action-btn" style="display:none; background:var(--glass); color:white; border:1px solid var(--border);" onclick="disableSelectionMode()">Cancel</button>
-            </div>
             <div id="songsContainer"></div>
         </div>
 
@@ -550,7 +545,7 @@
 
         // ---- AUDIO & DATA ----
         const audio = document.getElementById("mainAudio");
-        let currentUrl = "", searchQuery = "", activeP = null, isDragging = false, isSelectionMode = false, selectedSongs = new Set(), youtubeSongs = [];
+        let currentUrl = "", searchQuery = "", activeP = null, isDragging = false, youtubeSongs = [];
 
         const userPlaylists = { "Lo-Fi Sleep 😴": [], "Study Focus 📖": [], "Traveling ✈️": [], "My Playlist 💖": [] };
         const allSongs = [
@@ -635,6 +630,7 @@
         function openMenu(e, id) {
             e.stopPropagation();
             const popup = document.getElementById('globalPopup');
+            document.getElementById('popupHeader').innerText = "ADD TO PLAYLIST";
             document.getElementById('playlistOptions').innerHTML = playlistsData.map(p => {
                 const ex = userPlaylists[p.name].some(x => x.id === id);
                 return `<div class="menu-item" onclick="playlistAction(${id},'${p.name}',${ex})"><span>${p.name}</span><span style="color:${ex?'var(--danger)':'var(--primary)'};font-weight:bold;">${ex?'REMOVE':'ADD'}</span></div>`;
@@ -645,11 +641,10 @@
             if (ex) {
                 userPlaylists[pName] = userPlaylists[pName].filter(s => s.id !== id);
             } else {
-                // Try to find in allSongs (local) and youtubeSongs (in case it's a YouTube track with an id)
                 let song = allSongs.find(s => s.id === id);
                 if (!song) song = youtubeSongs.find(s => s.id === id);
                 if (song) userPlaylists[pName].push(song);
-                else return; // not found, do nothing
+                else return;
             }
             showToast(ex ? "Removed!" : "Added!");
             saveUserPlaylists();
@@ -657,19 +652,86 @@
             refreshView();
         }
 
+        function openYtMenu(e, videoId) {
+            e.stopPropagation();
+            const popup = document.getElementById('globalPopup');
+            document.getElementById('popupHeader').innerText = "ADD TO PLAYLIST";
+            document.getElementById('playlistOptions').innerHTML = playlistsData.map(p => {
+                const ex = userPlaylists[p.name].some(x => x.ytId === videoId);
+                return `<div class="menu-item" onclick="addYtToPlaylist('${videoId}','${p.name}',${ex})"><span>${p.name}</span><span style="color:${ex?'var(--danger)':'var(--primary)'};font-weight:bold;">${ex?'REMOVE':'ADD'}</span></div>`;
+            }).join('');
+            popup.classList.add('show');
+        }
+        async function addYtToPlaylist(videoId, pName, isRemove) {
+            if (isRemove) {
+                userPlaylists[pName] = userPlaylists[pName].filter(s => s.ytId !== videoId);
+                showToast("Removed!");
+            } else {
+                const song = youtubeSongs.find(s => s.ytId === videoId);
+                if (song) {
+                    userPlaylists[pName].push(song);
+                    showToast("Added!");
+                } else {
+                    showToast("Song not found");
+                    return;
+                }
+            }
+            await saveUserPlaylists();
+            document.getElementById('globalPopup').classList.remove('show');
+            refreshView();
+        }
+
+        // NEW: Playlist song removal functions
+        function openPlaylistSongMenu(e, songKey) {
+            e.stopPropagation();
+            const popup = document.getElementById('globalPopup');
+            document.getElementById('popupHeader').innerText = "SONG OPTIONS";
+            document.getElementById('playlistOptions').innerHTML = `
+                <div class="menu-item" onclick="removeSongFromPlaylist('${songKey}')">
+                    <span style="color: var(--danger);">Remove from this playlist</span>
+                </div>
+            `;
+            popup.classList.add('show');
+        }
+
+        function removeSongFromPlaylist(songKey) {
+            if (!activeP) return;
+            let updatedSongs;
+            if (songKey.startsWith('local_')) {
+                const id = Number(songKey.substring(6));
+                updatedSongs = userPlaylists[activeP].filter(s => s.id !== id);
+            } else if (songKey.startsWith('yt_')) {
+                const ytId = songKey.substring(3);
+                updatedSongs = userPlaylists[activeP].filter(s => s.ytId !== ytId);
+            } else {
+                return;
+            }
+            userPlaylists[activeP] = updatedSongs;
+            saveUserPlaylists();
+            document.getElementById('globalPopup').classList.remove('show');
+            renderPlaylistSongs();
+            showToast("Removed from playlist");
+        }
+
         function songItemTemplate(s) {
             const isP = currentUrl === s.url || (s.ytId && currentYouTubeId === s.ytId);
-            const isS = selectedSongs.has(s.id);
+            let songKey = s.id ? `local_${s.id}` : `yt_${s.ytId}`;
+            let moreBtn;
+            if (activeP) {
+                // In playlist view: show remove option
+                moreBtn = `<div class="more-btn" onclick="event.stopPropagation(); openPlaylistSongMenu(event, '${songKey}')">⋮</div>`;
+            } else {
+                // Home or search view: show add-to-playlist menu
+                if (s.ytId) {
+                    moreBtn = `<div class="more-btn" onclick="event.stopPropagation(); openYtMenu(event,'${s.ytId}')">⋮</div>`;
+                } else {
+                    moreBtn = `<div class="more-btn" onclick="event.stopPropagation(); openMenu(event,${s.id})">⋮</div>`;
+                }
+            }
             let clickAction;
-            if (isSelectionMode) clickAction = `toggleSelectSong(${s.id})`;
-            else if (s.ytId) clickAction = `playTrackFromUI('${s.ytId}','${s.title.replace(/'/g,"\\'")}','${s.artist.replace(/'/g,"\\'")}','${s.image}','youtube')`;
+            if (s.ytId) clickAction = `playTrackFromUI('${s.ytId}','${s.title.replace(/'/g,"\\'")}','${s.artist.replace(/'/g,"\\'")}','${s.image}','youtube')`;
             else clickAction = `playTrackFromUI('${s.id}','${s.title.replace(/'/g,"\\'")}','${s.artist.replace(/'/g,"\\'")}','${s.image}','local')`;
-            const moreBtn = !isSelectionMode
-                ? (s.ytId
-                    ? `<div class="more-btn" onclick="event.stopPropagation(); openYtMenu(event,'${s.ytId}')">⋮</div>`
-                    : `<div class="more-btn" onclick="openMenu(event,${s.id})">⋮</div>`)
-                : `<div style="color:var(--danger);font-weight:bold;margin-right:10px;">${isS?'✓':''}</div>`;
-            return `<div class="song-item ${isP?'playing-active':''} ${isS?'selected-to-remove':''}" onclick="${clickAction}"><div style="display:flex;align-items:center;flex:1"><div class="img-container"><img src="${s.image}" class="song-img"></div><div style="overflow:hidden;flex:1"><h4>${s.title}</h4><p style="font-size:10px;opacity:0.5">${s.artist}</p></div></div>${moreBtn}</div>`;
+            return `<div class="song-item ${isP?'playing-active':''}" onclick="${clickAction}"><div style="display:flex;align-items:center;flex:1"><div class="img-container"><img src="${s.image}" class="song-img"></div><div style="overflow:hidden;flex:1"><h4>${s.title}</h4><p style="font-size:10px;opacity:0.5">${s.artist}</p></div></div>${moreBtn}</div>`;
         }
 
         function playTrackFromUI(id, title, artist, image, type) {
@@ -730,37 +792,6 @@
         }
 
         function ytSongItemTemplate(s) { const isP = currentYouTubeId === s.videoId; return `<div class="song-item ${isP?'playing-active':''}" onclick="playYouTubeSong('${s.videoId}','${s.title.replace(/'/g,"\\'")}','${s.artist.replace(/'/g,"\\'")}','${s.image}')"><div style="display:flex;align-items:center;flex:1"><div class="img-container"><img src="${s.image}" class="song-img"></div><div style="overflow:hidden;flex:1"><h4>${s.title}</h4><p style="font-size:10px;opacity:0.5">${s.artist}</p></div></div><div class="more-btn" onclick="event.stopPropagation(); openYtMenu(event,'${s.videoId}')">⋮</div></div>`; }
-
-        // ---- YOUTUBE MENU FIX: USE youtubeSongs INSTEAD OF youtubeResults ----
-        function openYtMenu(e, videoId) {
-            e.stopPropagation();
-            const popup = document.getElementById('globalPopup');
-            document.getElementById('playlistOptions').innerHTML = playlistsData.map(p => {
-                const ex = userPlaylists[p.name].some(x => x.ytId === videoId);
-                return `<div class="menu-item" onclick="addYtToPlaylist('${videoId}','${p.name}',${ex})"><span>${p.name}</span><span style="color:${ex?'var(--danger)':'var(--primary)'};font-weight:bold;">${ex?'REMOVE':'ADD'}</span></div>`;
-            }).join('');
-            popup.classList.add('show');
-        }
-        async function addYtToPlaylist(videoId, pName, isRemove) {
-            if (isRemove) {
-                userPlaylists[pName] = userPlaylists[pName].filter(s => s.ytId !== videoId);
-                showToast("Removed!");
-            } else {
-                // Try to find the song in youtubeSongs (permanent list)
-                const song = youtubeSongs.find(s => s.ytId === videoId);
-                if (song) {
-                    userPlaylists[pName].push(song);
-                    showToast("Added!");
-                } else {
-                    // fallback: if not found, create minimal object (should not happen)
-                    showToast("Song not found");
-                    return;
-                }
-            }
-            await saveUserPlaylists();
-            document.getElementById('globalPopup').classList.remove('show');
-            refreshView();
-        }
 
         // ---- PLAYBACK & HISTORY (FIXED PREV/NEXT) ----
         function addToHistory(track) {
@@ -892,19 +923,9 @@
         audio.onloadedmetadata = () => { if(!isYouTubePlaying&&audio.duration&&isFinite(audio.duration)) document.getElementById('totalDuration').innerText=formatTime(audio.duration); };
         audio.onerror = () => { console.error("Audio error",audio.error); isPlaying=false; updatePlayIcon(false); document.getElementById('playerImgArt').classList.remove('music-playing'); };
 
-        // ---- PLAYLIST REMOVE (FIXED & TESTED) ----
+        // ---- PLAYLIST VIEW ----
         function openPlaylist(n) { activeP=n; document.getElementById('homeView').classList.remove('active'); document.getElementById('playlistView').classList.add('active'); document.getElementById('playlistTitle').innerText=n; document.getElementById('searchToggleBtn').style.display='none'; renderPlaylistSongs(); }
         function resetToHome() { activeP=null; document.getElementById('playlistView').classList.remove('active'); document.getElementById('homeView').classList.add('active'); document.getElementById('searchToggleBtn').style.display='flex'; renderAll(); }
-        function enableSelectionMode() { isSelectionMode=true; selectedSongs.clear(); document.getElementById('modeBtn').style.display='none'; document.getElementById('confirmBtn').style.display='block'; document.getElementById('cancelBtn').style.display='block'; renderPlaylistSongs(); }
-        function disableSelectionMode() { isSelectionMode=false; selectedSongs.clear(); document.getElementById('modeBtn').style.display='block'; document.getElementById('confirmBtn').style.display='none'; document.getElementById('cancelBtn').style.display='none'; renderPlaylistSongs(); }
-        function toggleSelectSong(id) { selectedSongs.has(id)?selectedSongs.delete(id):selectedSongs.add(id); renderPlaylistSongs(); }
-        async function confirmRemoval() {
-            if (!activeP) return;
-            userPlaylists[activeP] = userPlaylists[activeP].filter(s => !selectedSongs.has(s.id));
-            await saveUserPlaylists();
-            showToast("Songs Removed!");
-            disableSelectionMode();
-        }
         function renderPlaylistSongs() {
             let list = userPlaylists[activeP] || [];
             document.getElementById('songsContainer').innerHTML = list.length ? list.map(s => songItemTemplate(s)).join('') : "<p style='text-align:center;opacity:0.3;padding:20px;'>Empty.</p>";
@@ -974,4 +995,4 @@
         };
     </script>
 </body>
-                </html>
+    </html>
